@@ -42,6 +42,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "mimir_blocks" {
   bucket = aws_s3_bucket.mimir_blocks.id
 
   rule {
+    bucket_key_enabled       = false
+    blocked_encryption_types = ["SSE-C"]
+
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
@@ -52,6 +55,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "mimir_alertmanage
   bucket = aws_s3_bucket.mimir_alertmanager.id
 
   rule {
+    bucket_key_enabled       = false
+    blocked_encryption_types = ["SSE-C"]
+
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
@@ -62,6 +68,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "mimir_ruler" {
   bucket = aws_s3_bucket.mimir_ruler.id
 
   rule {
+    bucket_key_enabled       = false
+    blocked_encryption_types = ["SSE-C"]
+
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }

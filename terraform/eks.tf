@@ -70,7 +70,7 @@ module "eks" {
 
   eks_managed_node_groups = {
     karpenter = {
-      instance_types = ["t3a.large"]
+      instance_types = ["t3a.medium"]
       capacity_type  = "SPOT"
 
       min_size     = 2
