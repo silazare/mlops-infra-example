@@ -52,6 +52,10 @@ minio:
 lokiCanary:
   enabled: false
 
+# Helm test runs a probe against the canary; without canary the test fails the chart's validate.yaml
+test:
+  enabled: false
+
 # Memcached chunk + results cache — useful in prod
 chunksCache:
   enabled: false
