@@ -54,7 +54,7 @@ k -n traefik get svc traefik \
 Pick any one of the returned IPs and add:
 
 ```shell
-<IP>  argocd.local vault.local hipster.local grafana.local prometheus.local alertmanager.local
+<IP>  argocd.local grafana.local
 ```
 
 ### 4. Retrieve ArgoCD admin password

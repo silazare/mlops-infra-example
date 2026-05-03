@@ -7,6 +7,23 @@ serviceAccount:
   # SA name is pinned to match aws_eks_pod_identity_association.mimir
   name: mimir
 
+# Disable bundled Kafka — chart 6.x enables ingest-storage architecture by
+# default. Sandbox runs the classic write path (distributor → ingester → S3).
+# https://github.com/grafana/mimir/blob/main/docs/sources/helm-charts/mimir-distributed/migration-guides/migrate-helm-chart-5.x-to-6.0.md
+kafka:
+  enabled: false
+
+mimir:
+  structuredConfig:
+    ingest_storage:
+      enabled: false
+    ingester:
+      # Required when ingest_storage is off in chart 6.x
+      push_grpc_method_enabled: true
+      ring:
+        # Single ingester replica → RF must be 1
+        replication_factor: 1
+
 # Alertmanager: handles alert routing and silencing
 alertmanager:
   persistentVolume:
@@ -37,7 +54,7 @@ compactor:
 
 # Distributor: receives and validates incoming metrics
 distributor:
-  replicas: 2
+  replicas: 1
   resources:
     limits:
       memory: 3Gi
@@ -50,7 +67,7 @@ ingester:
   persistentVolume:
     size: 20Gi
     storageClass: "gp3"
-  replicas: 2
+  replicas: 1
   resources:
     limits:
       memory: 6Gi
