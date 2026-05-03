@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyterlab-llm-pod
+  namespace: jupyterlab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupyterlab-llm
+  template:
+    metadata:
+      labels:
+        app: jupyterlab-llm
+    spec:
+      # Karpenter `gpu` NodePool labels its nodes with `nodegroup: gpu`
+      # (terraform/karpenter.tf, kubectl_manifest.karpenter_nodepool_gpu).
+      nodeSelector:
+        nodegroup: gpu
+      # Tolerate the GPU taint set by the same NodePool.
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+      containers:
+      - name: jupyterlab-llm
+        image: 576087096890.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:25.01 # change to your image
+        ports:
+        - containerPort: 8888
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "1"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "8Gi"
+            cpu: "2"
+            nvidia.com/gpu: 1
+        env:
+        - name: JUPYTERLAB_SETTINGS_DIR
+          value: /jupyterlab/config
+        - name: MISTRAL_MODEL
+          value: /jupyterlab/models/mistral
+        - name: HF_HOME
+          value: /jupyterlab/models/hf
+        - name: ARTEFACT_ROOT_FOLDER
+          value: /jupyterlab/artefacts
+        - name: TOKENIZERS_PARALLELISM
+          value: "true"
+        volumeMounts:
+        - mountPath: "/jupyterlab"
+          name: pvc-llm
+      volumes:
+      - name: pvc-llm
+        persistentVolumeClaim:
+          claimName: pvc-llm
+      initContainers:
+        - name: init-container
+          image: busybox
+          volumeMounts:
+            - mountPath: "/jupyterlab"
+              name: pvc-llm
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mkdir -p /jupyterlab/notebooks /jupyterlab/models/mistral /jupyterlab/models/hf

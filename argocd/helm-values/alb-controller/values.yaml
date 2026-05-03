@@ -1,0 +1,11 @@
+replicaCount: 2
+
+rbac:
+  create: true
+
+fullnameOverride: aws-load-balancer-controller
+
+# SA name is pinned to match the aws_eks_pod_identity_association in terraform/iam.tf
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller

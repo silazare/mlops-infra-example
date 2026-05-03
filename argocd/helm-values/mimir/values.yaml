@@ -1,0 +1,191 @@
+---
+# Mimir-distributed for ~1M series. Based on Grafana's small.yaml sample.
+# https://github.com/grafana/mimir/blob/main/operations/helm/charts/mimir-distributed/small.yaml
+
+serviceAccount:
+  create: true
+  # SA name is pinned to match aws_eks_pod_identity_association.mimir
+  name: mimir
+
+# Alertmanager: handles alert routing and silencing
+alertmanager:
+  persistentVolume:
+    enabled: true
+    storageClass: "gp3"
+    size: 1Gi
+  replicas: 1
+  resources:
+    limits:
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  statefulSet:
+    enabled: true
+
+# Compactor: merges and compresses time series data
+compactor:
+  persistentVolume:
+    size: 10Gi
+    storageClass: "gp3"
+  resources:
+    limits:
+      memory: 1.5Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+# Distributor: receives and validates incoming metrics
+distributor:
+  replicas: 2
+  resources:
+    limits:
+      memory: 3Gi
+    requests:
+      cpu: 1
+      memory: 2Gi
+
+# Ingester: stores recent metrics in memory and writes to storage
+ingester:
+  persistentVolume:
+    size: 20Gi
+    storageClass: "gp3"
+  replicas: 2
+  resources:
+    limits:
+      memory: 6Gi
+    requests:
+      cpu: 2
+      memory: 4Gi
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - ingester
+            topologyKey: 'kubernetes.io/hostname'
+  zoneAwareReplication:
+    enabled: false
+    topologyKey: "kubernetes.io/hostname"
+    migration:
+      enabled: false
+      replicas: 0
+
+# Cache components — disabled for small cluster footprint
+admin-cache:
+  enabled: false
+  replicas: 1
+
+chunks-cache:
+  enabled: false
+  replicas: 1
+
+index-cache:
+  enabled: false
+  replicas: 1
+
+metadata-cache:
+  enabled: false
+  replicas: 1
+
+results-cache:
+  enabled: false
+  replicas: 1
+
+minio:
+  enabled: false
+
+overrides_exporter:
+  replicas: 1
+  resources:
+    limits:
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Querier: executes queries against ingesters and store gateway
+querier:
+  replicas: 1
+  resources:
+    limits:
+      memory: 3Gi
+    requests:
+      cpu: 1
+      memory: 2Gi
+
+# Query frontend: optimizes and distributes queries
+query_frontend:
+  replicas: 1
+  resources:
+    limits:
+      memory: 1.5Gi
+    requests:
+      cpu: 1
+      memory: 1Gi
+
+# Ruler: evaluates recording and alerting rules
+ruler:
+  replicas: 1
+  resources:
+    limits:
+      memory: 1.5Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+# Store gateway: serves data from object storage
+store_gateway:
+  persistentVolume:
+    size: 10Gi
+    storageClass: "gp3"
+  replicas: 1
+  resources:
+    limits:
+      memory: 1.5Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - store-gateway
+            topologyKey: 'kubernetes.io/hostname'
+  zoneAwareReplication:
+    enabled: false
+    topologyKey: "kubernetes.io/hostname"
+    migration:
+      enabled: false
+      replicas: 0
+
+# Nginx: load balancer for Mimir services
+nginx:
+  replicas: 1
+  resources:
+    limits:
+      memory: 512Mi
+    requests:
+      cpu: 500m
+      memory: 256Mi
+
+# Gateway: API gateway for Mimir services
+gateway:
+  replicas: 1
+  resources:
+    limits:
+      memory: 512Mi
+    requests:
+      cpu: 500m
+      memory: 256Mi

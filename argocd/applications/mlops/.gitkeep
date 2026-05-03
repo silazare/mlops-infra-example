@@ -1,0 +1,3 @@
+# Placeholder so the directory is committed. JupyterLab is currently deployed
+# manually via `kubectl apply -f kubernetes/` (see top-level README). When you're
+# ready to migrate it to GitOps, drop a `jupyterlab.yaml` ApplicationSet here.

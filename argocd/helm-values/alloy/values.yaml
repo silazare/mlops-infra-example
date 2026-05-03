@@ -1,0 +1,357 @@
+# Grafana Alloy Helm values for collecting basic system metrics
+#
+# This configuration sets up Alloy as a DaemonSet to collect node, kubelet, and container metrics
+# directly from kubelet endpoints, serving as an alternative to traditional node_exporter setup
+
+alloy:
+  configMap:
+    create: true
+    content: |
+      // Grafana Alloy configuration for collecting basic system metrics
+      // This configuration collects CPU, memory, disk, and container metrics from Kubernetes nodes
+      // and sends them to Mimir for storage
+      
+      // Logging configuration - adjust level as needed (debug, info, warn, error)
+      logging {
+        level = "info"
+        format = "logfmt"
+      }
+      
+      // Discover all nodes in the cluster for metric collection
+      // This single discovery block is more efficient than multiple separate ones
+      discovery.kubernetes "nodes" {
+        role = "node"
+      }
+      
+      // Collect kubelet metrics (includes node-level system metrics)
+      // These metrics include: node_cpu_*, node_memory_*, node_filesystem_*, kubelet_*
+      prometheus.scrape "kubelet_metrics" {
+        targets = discovery.kubernetes.nodes.targets
+        forward_to = [prometheus.remote_write.mimir.receiver]
+        job_name = "alloy/kubelet"
+        
+        // Kubelet metrics endpoint - provides node-level metrics
+        metrics_path = "/metrics"
+        scheme = "https"  // Kubelet typically uses HTTPS
+        scrape_interval = "60s"
+        scrape_timeout = "30s"
+        
+        // Authentication for kubelet endpoint
+        // Uses service account token for secure access
+        bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        tls_config {
+          insecure_skip_verify = true  // Skip cert verification for kubelet self-signed certs
+        }
+        
+        // Optional: Add metric relabeling to keep only essential metrics
+        // Uncomment and customize based on your needs
+        // metric_relabel_configs {
+        //   source_labels = ["__name__"]
+        //   regex = "(node_cpu_seconds_total|node_memory_.*|node_filesystem_.*|kubelet_.*)"
+        //   action = "keep"
+        // }
+      }
+      
+      // Collect cAdvisor metrics for container and pod-level metrics
+      // These metrics include: container_*, pod_*, kubelet_volume_*
+      prometheus.scrape "cadvisor_metrics" {
+        targets = discovery.kubernetes.nodes.targets
+        forward_to = [prometheus.remote_write.mimir.receiver]
+        job_name = "alloy/cadvisor"
+        
+        // cAdvisor metrics endpoint - provides container metrics
+        metrics_path = "/metrics/cadvisor"
+        scheme = "https"
+        scrape_interval = "60s"
+        scrape_timeout = "30s"
+        
+        // Authentication for kubelet cAdvisor endpoint
+        bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        tls_config {
+          insecure_skip_verify = true
+        }
+        
+        // Optional: Filter out high-cardinality metrics to reduce storage
+        // metric_relabel_configs {
+        //   source_labels = ["__name__"]
+        //   regex = "(container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_fs_.*|pod_.*)"
+        //   action = "keep"
+        // }
+      }
+      
+      // This block relabels metrics coming from node_exporter to add standard labels
+      discovery.relabel "integrations_node_exporter" {
+        targets = prometheus.exporter.unix.integrations_node_exporter.targets
+
+        rule {
+          // Set a standard job name for all node_exporter metrics
+          target_label = "job"
+          replacement = "integrations/node_exporter"
+        }
+      }
+
+      // Configure the node_exporter integration to collect system metrics
+      prometheus.exporter.unix "integrations_node_exporter" {
+        // Disable unnecessary collectors to reduce overhead
+        disable_collectors = ["ipvs", "btrfs", "infiniband", "xfs", "zfs"]
+        enable_collectors = ["meminfo"]
+
+        filesystem {
+          // Exclude filesystem types that aren't relevant for monitoring
+          fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|tmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+          // Exclude mount points that aren't relevant for monitoring
+          mount_points_exclude = "^/(dev|proc|run/credentials/.+|sys|var/lib/docker/.+)($|/)"
+          // Timeout for filesystem operations
+          mount_timeout        = "5s"
+        }
+
+        netclass {
+          // Ignore virtual and container network interfaces
+          ignored_devices = "^(veth.*|cali.*|[a-f0-9]{15})$"
+        }
+
+        netdev {
+          // Exclude virtual and container network interfaces from device metrics
+          device_exclude = "^(veth.*|cali.*|[a-f0-9]{15})$"
+        }
+      }
+
+      // Define how to scrape metrics from the node_exporter
+      prometheus.scrape "integrations_node_exporter" {
+        scrape_interval = "15s"
+        // Use the targets with labels from the discovery.relabel component
+        targets    = discovery.relabel.integrations_node_exporter.output
+        // Send the scraped metrics to the remote write component
+        forward_to = [prometheus.remote_write.mimir.receiver]
+      }
+      
+      // Send all collected metrics to Mimir
+      // Adjust the endpoint URL to match your Mimir installation
+      prometheus.remote_write "mimir" {
+        endpoint {
+          url = "http://mimir-nginx.monitoring.svc:80/api/v1/push"
+          
+          // Optional: Add external labels to identify the cluster
+          // external_labels = {
+          //   cluster = "production"
+          //   region = "us-west-2"
+          // }
+        }
+        
+        // Optional: Configure batching and retry behavior
+        // queue_config {
+        //   capacity = 10000
+        //   max_samples_per_send = 2000
+        //   batch_send_deadline = "5s"
+        // }
+      }
+      
+      // Optional: Collect Alloy's own metrics for monitoring the collector itself
+      prometheus.scrape "self" {
+        targets = [{"__address__" = "localhost:12345", "__metrics_path__" = "/metrics"}]
+        forward_to = [prometheus.remote_write.mimir.receiver]
+        job_name = "alloy/self"
+        scrape_interval = "60s"
+      }
+
+      // ===== Logs pipeline: discover pods → tail via kubelet → ship to Loki =====
+
+      // Discover all pods cluster-wide
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Promote standard pod metadata to Loki labels
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label  = "app"
+        }
+      }
+
+      // Tail container logs via kubelet (no hostPath needed — uses /api/v1/pods/.../log)
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      // Send all collected logs to Loki single-binary gateway
+      loki.write "loki" {
+        endpoint {
+          url = "http://loki-gateway.monitoring.svc/loki/api/v1/push"
+        }
+      }
+
+# Service account configuration
+# Required for Kubernetes API access and metric collection
+serviceAccount:
+  create: true
+  name: "alloy"
+
+# RBAC configuration
+# Permissions required for Kubernetes discovery and metric collection
+rbac:
+  create: true
+  rules:
+    # Basic Kubernetes discovery permissions
+    - apiGroups: [""]
+      resources: ["nodes", "pods", "services", "endpoints"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources: ["deployments", "statefulsets", "daemonsets"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["extensions"]
+      resources: ["deployments", "replicasets"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["batch"]
+      resources: ["jobs", "cronjobs"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["autoscaling"]
+      resources: ["horizontalpodautoscalers"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["networking.k8s.io"]
+      resources: ["ingresses"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["nodes/metrics", "nodes/proxy"]
+      verbs: ["get"]
+    - nonResourceURLs: ["/metrics"]
+      verbs: ["get"]
+
+daemonSet:
+  enabled: true
+  
+  # Host network access for better node-level metric collection
+  # This allows Alloy to access kubelet on each node directly
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet  # Required when using hostNetwork
+  
+  # Security context for accessing node metrics
+  # Running as root is required for accessing some system metrics
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    fsGroup: 0
+    # capabilities:
+    #   add: ["SYS_TIME"]  # Add if you need time-related metrics
+  
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: false
+    runAsUser: 0
+    fsGroup: 0
+  
+  # Mount additional host paths for comprehensive node metrics
+  # These mounts provide access to system information similar to node_exporter
+  extraVolumes:
+    - name: proc
+      hostPath:
+        path: /proc
+        type: Directory
+    - name: sys
+      hostPath:
+        path: /sys
+        type: Directory
+    - name: root
+      hostPath:
+        path: /
+        type: Directory
+  
+  extraVolumeMounts:
+    - name: proc
+      mountPath: /host/proc
+      readOnly: true
+    - name: sys
+      mountPath: /host/sys
+      readOnly: true
+    - name: root
+      mountPath: /host/root
+      readOnly: true
+  
+  # Node selection and tolerations
+  # Ensure Alloy runs on all nodes, including masters
+  tolerations:
+    - operator: Exists
+      effect: NoSchedule
+    - operator: Exists
+      effect: NoExecute
+  
+  # Update strategy for DaemonSet
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+
+# Deployment configuration (disabled when using DaemonSet)
+deployment:
+  enabled: false
+
+# Resource limits for Alloy
+# Adjust based on your cluster size and metric volume
+resources:
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+
+# Service configuration for Alloy metrics endpoint
+service:
+  enabled: true
+  type: ClusterIP
+  port: 12345
+  # annotations:
+  #   prometheus.io/scrape: "true"
+  #   prometheus.io/port: "12345"
+
+# Monitoring configuration
+# Enable if you want to monitor Alloy itself with ServiceMonitor (Prometheus Operator)
+serviceMonitor:
+  enabled: false
+  # interval: 60s
+  # scrapeTimeout: 30s
+  # labels: {}
+
+# Pod disruption budget
+# Useful for maintaining availability during cluster updates
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+
+# Additional pod annotations
+podAnnotations: {}
+  # prometheus.io/scrape: "true"
+  # prometheus.io/port: "12345"
+
+# Additional pod labels
+podLabels: {}
+
+# Environment variables
+extraEnv: []
+  # - name: JAEGER_ENDPOINT
+  #   value: "http://jaeger-collector:14268/api/traces"
+
+# Additional command line arguments
+extraArgs: []
+  # - "--config.expand-env"
+  # - "--log.level=debug"

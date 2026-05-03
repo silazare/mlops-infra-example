@@ -1,0 +1,194 @@
+---
+# Grafana with Mimir as default datasource.
+
+# Admin credentials — non-production
+adminUser: admin
+adminPassword: admin123
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  hosts:
+    - grafana.local
+  path: /
+
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClassName: "gp3"
+
+resources:
+  limits:
+    memory: 1Gi
+    cpu: 1000m
+  requests:
+    memory: 512Mi
+    cpu: 250m
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Mimir
+        type: prometheus
+        access: proxy
+        url: http://mimir-nginx.monitoring.svc:80/prometheus
+        isDefault: true
+        editable: true
+        jsonData:
+          timeInterval: 30s
+          queryTimeout: 60s
+          httpMethod: POST
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        url: http://loki-gateway.monitoring.svc.cluster.local/
+        editable: true
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+# Disable label-based discovery to avoid duplicate provisioning
+sidecar:
+  dashboards:
+    enabled: false
+    label: grafana_dashboard
+    searchNamespace: monitoring
+    folder: /var/lib/grafana/dashboards/default
+
+dashboards:
+  default:
+    # Simple Kubernetes Nodes dashboard wired to Mimir as default datasource
+    kubernetes-nodes:
+      json: |
+        {
+          "title": "Kubernetes Nodes",
+          "templating": {
+            "list": [
+              {
+                "name": "DS_PROMETHEUS",
+                "type": "datasource",
+                "query": "prometheus",
+                "current": {
+                  "value": "Mimir",
+                  "text": "Mimir"
+                }
+              }
+            ]
+          },
+          "panels": [
+            {
+              "id": 1,
+              "title": "Node CPU Usage",
+              "type": "stat",
+              "targets": [
+                {
+                  "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+                  "legendFormat": "{{instance}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "max": 100
+                }
+              },
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+            },
+            {
+              "id": 2,
+              "title": "Node Memory Usage",
+              "type": "stat",
+              "targets": [
+                {
+                  "expr": "100 - ((node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)",
+                  "legendFormat": "{{instance}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "max": 100
+                }
+              },
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+            },
+            {
+              "id": 3,
+              "title": "Node CPU Usage Over Time",
+              "type": "timeseries",
+              "targets": [
+                {
+                  "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+                  "legendFormat": "{{instance}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "max": 100
+                }
+              },
+              "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+            },
+            {
+              "id": 4,
+              "title": "Node Memory Usage Over Time",
+              "type": "timeseries",
+              "targets": [
+                {
+                  "expr": "100 - ((node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)",
+                  "legendFormat": "{{instance}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "max": 100
+                }
+              },
+              "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+            }
+          ]
+        }
+    # Node Exporter Full (https://grafana.com/grafana/dashboards/1860)
+    node-exporter-full:
+      url: https://grafana.com/api/dashboards/1860/revisions/latest/download
+    # Loki Kubernetes Logs (https://grafana.com/grafana/dashboards/15141)
+    loki-kubernetes-logs-15141:
+      gnetId: 15141
+      revision: 1
+      datasource:
+        - name: DS_LOKI
+          value: loki
+
+rbac:
+  create: true
+
+deploymentStrategy:
+  type: Recreate
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 472
+  fsGroup: 472

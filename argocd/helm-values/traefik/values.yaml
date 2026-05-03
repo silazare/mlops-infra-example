@@ -1,0 +1,90 @@
+---
+deployment:
+  enabled: true
+  kind: Deployment
+  replicas: 1
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+
+providers:
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: false
+    allowExternalNameServices: false
+    allowEmptyServices: true
+  kubernetesIngress:
+    enabled: true
+    allowExternalNameServices: false
+    allowEmptyServices: true
+    publishedService:
+      enabled: true
+
+ports:
+  traefik:
+    port: 8080
+    expose:
+      default: false
+    exposedPort: 8080
+  web:
+    port: 8000
+    expose:
+      default: true
+    exposedPort: 80
+  websecure:
+    port: 8443
+    expose:
+      default: true
+    exposedPort: 443
+    http:
+      tls:
+        enabled: true
+  metrics:
+    port: 9100
+    expose:
+      default: false
+    exposedPort: 9100
+
+service:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-manage-backend-security-group-rules: "true"
+    # Dynamic annotations are injected from the ArgoCD cluster Secret via the ApplicationSet template
+    # service.beta.kubernetes.io/aws-load-balancer-security-groups: ${aws_security_group.ingress_traefik_external.id}
+    # service.beta.kubernetes.io/aws-load-balancer-eip-allocations: eipalloc-aaaa,eipalloc-bbbb,eipalloc-cccc
+
+logs:
+  general:
+    format: json
+    level: INFO
+  access:
+    enabled: true
+    format: json
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addRoutersLabels: false
+    addServicesLabels: true
+    addEntryPointsLabels: true
+
+api:
+  dashboard: false
+
+ingressRoute:
+  dashboard:
+    enabled: false
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
