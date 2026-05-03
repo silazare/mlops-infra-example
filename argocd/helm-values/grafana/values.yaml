@@ -74,106 +74,21 @@ sidecar:
 
 dashboards:
   default:
-    # Simple Kubernetes Nodes dashboard wired to Mimir as default datasource
-    kubernetes-nodes:
-      json: |
-        {
-          "title": "Kubernetes Nodes",
-          "templating": {
-            "list": [
-              {
-                "name": "DS_PROMETHEUS",
-                "type": "datasource",
-                "query": "prometheus",
-                "current": {
-                  "value": "Mimir",
-                  "text": "Mimir"
-                }
-              }
-            ]
-          },
-          "panels": [
-            {
-              "id": 1,
-              "title": "Node CPU Usage",
-              "type": "stat",
-              "targets": [
-                {
-                  "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
-                  "legendFormat": "{{instance}}"
-                }
-              ],
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "percent",
-                  "min": 0,
-                  "max": 100
-                }
-              },
-              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
-            },
-            {
-              "id": 2,
-              "title": "Node Memory Usage",
-              "type": "stat",
-              "targets": [
-                {
-                  "expr": "100 - ((node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)",
-                  "legendFormat": "{{instance}}"
-                }
-              ],
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "percent",
-                  "min": 0,
-                  "max": 100
-                }
-              },
-              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
-            },
-            {
-              "id": 3,
-              "title": "Node CPU Usage Over Time",
-              "type": "timeseries",
-              "targets": [
-                {
-                  "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
-                  "legendFormat": "{{instance}}"
-                }
-              ],
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "percent",
-                  "min": 0,
-                  "max": 100
-                }
-              },
-              "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
-            },
-            {
-              "id": 4,
-              "title": "Node Memory Usage Over Time",
-              "type": "timeseries",
-              "targets": [
-                {
-                  "expr": "100 - ((node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)",
-                  "legendFormat": "{{instance}}"
-                }
-              ],
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "percent",
-                  "min": 0,
-                  "max": 100
-                }
-              },
-              "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
-            }
-          ]
-        }
     # Node Exporter Full (https://grafana.com/grafana/dashboards/1860)
-    node-exporter-full:
-      url: https://grafana.com/api/dashboards/1860/revisions/latest/download
+    node-exporter-full-1860:
+      gnetId: 1860
+      revision: 45
+      datasource: Mimir
+    # Kubernetes / Kubelet (https://grafana.com/grafana/dashboards/15663)
+    kubernetes-kubelet-15663:
+      gnetId: 15663
+      revision: 1
+      datasource: Mimir
+    # Kubernetes Cluster — cAdvisor based (https://grafana.com/grafana/dashboards/12740)
+    kubernetes-cluster-12740:
+      gnetId: 12740
+      revision: 1
+      datasource: Mimir
     # Loki Kubernetes Logs (https://grafana.com/grafana/dashboards/15141)
     loki-kubernetes-logs-15141:
       gnetId: 15141

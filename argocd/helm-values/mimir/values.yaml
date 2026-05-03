@@ -146,6 +146,10 @@ query_frontend:
       cpu: 1
       memory: 1Gi
 
+# Query scheduler: routes queries from frontend to queriers
+query_scheduler:
+  replicas: 1
+
 # Ruler: evaluates recording and alerting rules
 ruler:
   replicas: 1
