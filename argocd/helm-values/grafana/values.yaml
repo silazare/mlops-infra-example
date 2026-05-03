@@ -3,7 +3,7 @@
 
 # Admin credentials — non-production
 adminUser: admin
-adminPassword: admin123
+adminPassword: admin123!
 
 service:
   type: ClusterIP
@@ -36,7 +36,7 @@ datasources:
       - name: Mimir
         type: prometheus
         access: proxy
-        url: http://mimir-nginx.monitoring.svc:80/prometheus
+        url: http://mimir-gateway.monitoring.svc/prometheus
         isDefault: true
         editable: true
         jsonData:

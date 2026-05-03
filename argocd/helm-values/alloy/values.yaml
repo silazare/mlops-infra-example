@@ -129,7 +129,7 @@ alloy:
       // Adjust the endpoint URL to match your Mimir installation
       prometheus.remote_write "mimir" {
         endpoint {
-          url = "http://mimir-nginx.monitoring.svc:80/api/v1/push"
+          url = "http://mimir-gateway.monitoring.svc/api/v1/push"
           
           // Optional: Add external labels to identify the cluster
           // external_labels = {
