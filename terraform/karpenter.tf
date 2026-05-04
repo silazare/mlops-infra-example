@@ -123,7 +123,7 @@ spec:
           minValues: 1
         - key: "karpenter.k8s.aws/instance-cpu"
           operator: In
-          values: ["4", "8"]
+          values: ["2", 4", "8"]
         - key: "karpenter.k8s.aws/instance-generation"
           operator: Gt
           values: ["2"]

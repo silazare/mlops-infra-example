@@ -79,11 +79,6 @@ dashboards:
       gnetId: 1860
       revision: 45
       datasource: Mimir
-    # Kubernetes / Kubelet (https://grafana.com/grafana/dashboards/15663)
-    kubernetes-kubelet-15663:
-      gnetId: 15663
-      revision: 1
-      datasource: Mimir
     # Kubernetes Cluster — cAdvisor based (https://grafana.com/grafana/dashboards/12740)
     kubernetes-cluster-12740:
       gnetId: 12740
