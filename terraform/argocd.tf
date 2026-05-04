@@ -9,6 +9,14 @@ resource "helm_release" "argocd" {
 
   values = [
     <<-EOT
+    global:
+      nodeSelector:
+        karpenter.sh/controller: "true"
+      tolerations:
+        - key: karpenter.sh/controller
+          operator: Exists
+          effect: NoSchedule
+
     # HA redis cluster (3 servers + 3 haproxy)
     redis-ha:
       enabled: false
