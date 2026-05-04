@@ -188,6 +188,32 @@ alloy:
         scrape_interval = "60s"
       }
 
+      // ===== kube-state-metrics: cluster-state metrics  =====
+
+      discovery.relabel "kube_state_metrics" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "kube-state-metrics"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_name"]
+          regex         = "http"
+          action        = "keep"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "kube-state-metrics"
+        }
+      }
+
+      prometheus.scrape "kube_state_metrics" {
+        targets         = discovery.relabel.kube_state_metrics.output
+        forward_to      = [prometheus.remote_write.mimir.receiver]
+        scrape_interval = "60s"
+      }
+
       // ===== Logs pipeline: discover pods > tail via kubelet > ship to Loki =====
 
       // Discover only pods on the local node (DaemonSet → 1 pod per node).

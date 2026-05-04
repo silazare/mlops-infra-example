@@ -74,15 +74,25 @@ sidecar:
 
 dashboards:
   default:
-    # Node Exporter Full (https://grafana.com/grafana/dashboards/1860)
     node-exporter-full-1860:
       gnetId: 1860
       revision: 45
       datasource: Mimir
-    # Kubernetes Cluster — cAdvisor based (https://grafana.com/grafana/dashboards/12740)
-    kubernetes-cluster-12740:
-      gnetId: 12740
-      revision: 1
+    kubernetes-views-global-15757:
+      gnetId: 15757
+      revision: 43
+      datasource: Mimir
+    kubernetes-views-namespaces-15758:
+      gnetId: 15758
+      revision: 42
+      datasource: Mimir
+    kubernetes-views-nodes-15759:
+      gnetId: 15759
+      revision: 37
+      datasource: Mimir
+    kubernetes-views-pods-15760:
+      gnetId: 15760
+      revision: 35
       datasource: Mimir
     kubernetes-logs:
       json: |
