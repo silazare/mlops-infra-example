@@ -43,7 +43,7 @@ alertmanager:
 # Compactor: merges and compresses time series data
 compactor:
   persistentVolume:
-    size: 10Gi
+    size: 5Gi
     storageClass: "gp3"
   resources:
     limits:
