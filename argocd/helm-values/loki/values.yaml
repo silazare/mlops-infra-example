@@ -52,7 +52,7 @@ minio:
 lokiCanary:
   enabled: false
 
-# Helm test runs a probe against the canary; without canary the test fails the chart's validate.yaml
+# Helm test runs a probe against the canary
 test:
   enabled: false
 
@@ -71,7 +71,7 @@ singleBinary:
     enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
     enabled: true
-    size: 10Gi
+    size: 5Gi
     storageClass: gp3
 
 # Zero out replica counts of other deployment modes

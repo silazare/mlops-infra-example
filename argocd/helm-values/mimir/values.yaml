@@ -65,7 +65,7 @@ distributor:
 # Ingester: stores recent metrics in memory and writes to storage
 ingester:
   persistentVolume:
-    size: 20Gi
+    size: 5Gi
     storageClass: "gp3"
   replicas: 1
   resources:
@@ -163,7 +163,7 @@ ruler:
 # Store gateway: serves data from object storage
 store_gateway:
   persistentVolume:
-    size: 10Gi
+    size: 5Gi
     storageClass: "gp3"
   replicas: 1
   resources:
