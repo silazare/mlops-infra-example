@@ -75,6 +75,22 @@ argocd repo add https://github.com/silazare/argocd-infra-example.git \
 argocd repo add ghcr.io --type helm --name stable --enable-oci
 ```
 
+## Delete infrastructure
+
+```shell
+# delete ArgoCD root application
+
+# remove stuck application sets
+for kind in applications applicationsets; do
+  for name in $(kubectl -n argocd get $kind -o name); do
+    kubectl -n argocd patch $name --type=json \
+      -p='[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null
+  done
+done
+
+# destroy tf resources
+terraform destroy
+```
 
 ## JupyterLab example with GPU - manual deploy
 
