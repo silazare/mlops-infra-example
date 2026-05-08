@@ -11,7 +11,7 @@ AWS EKS layer (Terraform):
 Core layer (ArgoCD at `argocd/applications/core/`):
 - [x] Traefik ingress controller
 - [x] AWS Load Balancer Controller (Helm release; IAM stays in TF)
-- [ ] NVIDIA GPU Operator — GPU setup
+- [x] NVIDIA GPU Operator
 - [x] Grafana Mimir + Alloy — Monitoring
 
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):

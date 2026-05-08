@@ -1,0 +1,40 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nvidia-gpu-operator
+  namespace: argocd
+spec:
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+  template:
+    metadata:
+      name: nvidia-gpu-operator
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      sources:
+        - repoURL: https://helm.ngc.nvidia.com/nvidia
+          chart: gpu-operator
+          targetRevision: v26.3.1
+          helm:
+            releaseName: gpu-operator
+            valueFiles:
+              - $values/argocd/helm-values/nvidia-gpu-operator/values.yaml
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: "{{metadata.annotations.target_revision}}"
+          ref: values
+      destination:
+        server: "{{server}}"
+        namespace: gpu-operator
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

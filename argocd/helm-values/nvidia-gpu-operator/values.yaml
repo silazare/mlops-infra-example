@@ -1,0 +1,45 @@
+---
+# Operator builds and loads the kernel module on the node
+# Set to false if the AMI has the driver preinstalled
+driver:
+  enabled: true
+
+# Patches containerd config and installs nvidia-container-runtime on the node.
+# Set to false if the AMI already has the toolkit
+toolkit:
+  enabled: true
+
+# Propagate toleration to all DaemonSets
+# Required because the Karpenter `gpu` NodePool taints with nvidia.com/gpu=true:NoSchedule
+daemonsets:
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+
+# GPU partitioning
+mig:
+  strategy: none
+migManager:
+  enabled: false
+vgpuManager:
+  enabled: false
+vgpuDeviceManager:
+  enabled: false
+sandboxWorkloads:
+  enabled: false
+
+dcgmExporter:
+  enabled: true
+
+# Adds GPU-specific node labels
+gfd:
+  enabled: true
+
+# Bundled NFD
+nfd:
+  enabled: true
+
+# Operator controller
+operator:
+  replicas: 1
