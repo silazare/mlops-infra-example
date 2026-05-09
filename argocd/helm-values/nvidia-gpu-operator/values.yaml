@@ -3,6 +3,12 @@
 # Set to false if the AMI has the driver preinstalled
 driver:
   enabled: true
+  # https://catalog.ngc.nvidia.com/orgs/nvidia/containers/driver/tags
+  version: "580.126.20"
+  repository: nvcr.io/nvidia
+  image: driver
+  # Compiles driver on the node from kernel-devel
+  usePrecompiled: false
 
 # Patches containerd config and installs nvidia-container-runtime on the node.
 # Set to false if the AMI already has the toolkit

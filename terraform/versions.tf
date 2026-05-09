@@ -18,5 +18,9 @@ terraform {
       source  = "alekc/kubectl"
       version = "~> 2.2"
     }
+    cloudinit = {
+      source  = "hashicorp/cloudinit"
+      version = "~> 2.3"
+    }
   }
 }
