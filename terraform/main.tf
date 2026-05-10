@@ -28,5 +28,6 @@ locals {
   # ECR repositories
   ecr_repositories = [
     "jupyterlab-llm",
+    "jupyterlab-llm-cache",
   ]
 }

@@ -1,0 +1,93 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-jupyterlab-llm
+  namespace: buildkit
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 0
+  template:
+    spec:
+      serviceAccountName: image-builder
+      restartPolicy: Never
+      nodeSelector:
+        nodegroup: default
+      initContainers:
+        - name: git-clone
+          image: alpine/git:v2.52.0
+          command: ["sh", "-ec"]
+          args:
+            - git clone --depth 1 --branch master https://github.com/silazare/mlops-infra-example.git /workspace
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+        - name: ecr-login
+          image: amazon/aws-cli:2.34.45
+          command: ["sh", "-ec"]
+          args:
+            - |
+              TOKEN=$(aws ecr get-login-password --region eu-west-1)
+              cat > /docker-config/config.json <<EOF
+              {
+                "auths": {
+                  "576087096890.dkr.ecr.eu-west-1.amazonaws.com": {
+                    "auth": "$(printf 'AWS:%s' "$TOKEN" | base64 -w0)"
+                  }
+                }
+              }
+              EOF
+          volumeMounts:
+            - name: docker-config
+              mountPath: /docker-config
+      containers:
+        - name: buildkit
+          image: moby/buildkit:v0.29.0-rootless
+          command: ["buildctl-daemonless.sh"]
+          args:
+            - build
+            - --frontend=dockerfile.v0
+            - --local=context=/workspace/mlops/jupyterlab-llm
+            - --local=dockerfile=/workspace/mlops/jupyterlab-llm
+            # Bump TAG here AND in argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml when re-releasing
+            - --output=type=image,name=576087096890.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:25.01,push=true
+            - --import-cache=type=registry,ref=576087096890.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm-cache
+            - --export-cache=type=registry,ref=576087096890.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm-cache,mode=max
+            - --progress=plain
+          env:
+            - name: BUILDKITD_FLAGS
+              value: --oci-worker-no-process-sandbox
+            - name: DOCKER_CONFIG
+              value: /home/user/.docker
+          # Rootless BuildKit needs unconfined seccomp for user-namespace syscalls
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: Unconfined
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+              readOnly: true
+            - name: docker-config
+              mountPath: /home/user/.docker
+              readOnly: true
+            - name: buildkit-cache
+              mountPath: /home/user/.local/share/buildkit
+          resources:
+            requests:
+              cpu: "2"
+              memory: "8Gi"
+              ephemeral-storage: "20Gi"
+            limits:
+              cpu: "2"
+              memory: "8Gi"
+              ephemeral-storage: "20Gi"
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: docker-config
+          emptyDir: {}
+        - name: buildkit-cache
+          emptyDir:
+            sizeLimit: 30Gi

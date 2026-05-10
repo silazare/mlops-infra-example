@@ -6,9 +6,6 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  # Dynamic gp3 (provided by argocd/manifests/storage-classes/gp3.yaml).
-  # WaitForFirstConsumer ensures the PV is created in the AZ where the GPU
-  # pod is scheduled by Karpenter.
   storageClassName: gp3
   resources:
     requests:

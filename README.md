@@ -15,7 +15,7 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 - [x] Grafana Mimir + Alloy — Monitoring
 
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):
-- TBD
+- [x] JupyterLab (CUDA/LLM) — image built in-cluster via BuildKit Job, deploy via manual-sync Argo Application
 
 
 ## Deployment
@@ -92,22 +92,29 @@ done
 terraform destroy
 ```
 
-## JupyterLab example with GPU - manual deploy
+## JupyterLab example with GPU
 
 https://medium.com/@sinan.ozel_23433/iac-for-generative-ai-llm-jupyterlab-on-kubernetes-a33d31841a27
 https://www.jimangel.io/posts/nvidia-rtx-gpu-kubernetes-setup/
 
-1) Build Docker image
+### 1. Build & push image — in-cluster with BuildKit rootless
+
+Build runs as a Job in `buildkit` namespace and pushes image, layer cache to `jupyterlab-llm-cache` repo. Update branch/tag inside `build-job.yaml` if needed.
+
+Edit the tag in files (keep them in sync), then build + push + sync:
+
+- [mlops/jupyterlab-llm/build-job.yaml](mlops/jupyterlab-llm/build-job.yaml) — `--output=...:<NEW_TAG>`
+- [argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml](argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml) — `image: ...:<NEW_TAG>`
 
 ```shell
-cd jupyterlab-llm
-docker build --tag jupyterlab-llm:25.01 .
+k replace --force -f mlops/jupyterlab-llm/build-job.yaml
 ```
 
-2) Push Docker image to ECR
+### 2. Deploy via Argo manual sync
+
+Application is not auto-synced — image must exist in ECR before first sync. 
+Trigger sync manually:
 
 ```shell
-aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 576087096890.dkr.ecr.eu-west-1.amazonaws.com
-docker tag jupyterlab-llm:25.01 576087096890.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:25.01
-docker push 576087096890.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:25.01
+argocd app sync jupyterlab-llm
 ```

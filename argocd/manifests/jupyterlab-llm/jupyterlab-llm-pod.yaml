@@ -13,10 +13,10 @@ spec:
       labels:
         app: jupyterlab-llm
     spec:
-      # Karpenter `gpu` NodePool labels its nodes with `nodegroup: gpu`
-      # (terraform/karpenter.tf, kubectl_manifest.karpenter_nodepool_gpu).
+      # Karpenter `gpu-ubuntu` NodePool — Ubuntu 24.04 + NVIDIA Operator-managed driver.
+      # The legacy AL2023 `gpu` pool is kept in terraform but unused (no -amzn2023 driver image).
       nodeSelector:
-        nodegroup: gpu
+        nodegroup: gpu-ubuntu
       # Tolerate the GPU taint set by the same NodePool.
       tolerations:
       - key: nvidia.com/gpu
@@ -32,11 +32,11 @@ spec:
           requests:
             memory: "8Gi"
             cpu: "1"
-            nvidia.com/gpu: 1
+            nvidia.com/gpu: "1"
           limits:
             memory: "8Gi"
             cpu: "2"
-            nvidia.com/gpu: 1
+            nvidia.com/gpu: "1"
         env:
         - name: JUPYTERLAB_SETTINGS_DIR
           value: /jupyterlab/config
