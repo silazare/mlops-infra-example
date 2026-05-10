@@ -88,7 +88,6 @@ for kind in applications applicationsets; do
   done
 done
 
-# destroy tf resources
 terraform destroy
 ```
 

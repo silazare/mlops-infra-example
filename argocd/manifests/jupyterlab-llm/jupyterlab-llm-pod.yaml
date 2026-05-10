@@ -13,11 +13,8 @@ spec:
       labels:
         app: jupyterlab-llm
     spec:
-      # Karpenter `gpu-ubuntu` NodePool — Ubuntu 24.04 + NVIDIA Operator-managed driver.
-      # The legacy AL2023 `gpu` pool is kept in terraform but unused (no -amzn2023 driver image).
       nodeSelector:
         nodegroup: gpu-ubuntu
-      # Tolerate the GPU taint set by the same NodePool.
       tolerations:
       - key: nvidia.com/gpu
         operator: Equal

@@ -1,6 +1,6 @@
 # Project Overview
 
-AWS EKS cluster bootstrap for ML/observability workloads, built on the same GitOps Bridge pattern as [argocd-infra-example](../argocd-infra-example/) but with a Mimir+Alloy+Loki+Grafana stack instead of kube-prometheus-stack, an additional GPU NodePool in Karpenter, and a manual JupyterLab deployment slot under `mlops/`.
+AWS EKS cluster bootstrap for ML/observability workloads, built on the same GitOps Bridge pattern as [argocd-infra-example](../argocd-infra-example/) but with a Mimir+Alloy+Loki+Grafana stack instead of kube-prometheus-stack, NVIDIA GPU Operator on Karpenter-provisioned GPU nodes, four Karpenter NodePools (CPU + GPU, AL2023 and Ubuntu), in-cluster image builds via BuildKit, and a JupyterLab Argo Application synced manually from `mlops/`.
 
 Cluster name is `mltest`, region `eu-west-1`, K8s `1.35`. Sandbox-grade — single-replica everywhere, non-production secrets in git, local TF state.
 
@@ -24,13 +24,14 @@ Two foundational k8s resources are deliberately on the TF side:
 ```
 terraform/                        # cluster-layer
   main.tf                         # locals (cluster name `mltest`, region, ECR repo list, chart versions, target_revision)
-  versions.tf                     # provider + Terraform version pins
-  providers.tf                    # aws, helm, kubectl, kubernetes (all with exec auth)
+  versions.tf                     # provider + Terraform version pins (incl. hashicorp/cloudinit for Ubuntu userData)
+  providers.tf                    # aws, helm, kubectl, kubernetes (all with exec auth) + cloudinit
   vpc.tf                          # VPC module + Traefik external/node SGs
   eks.tf                          # EKS module (addons incl. EBS CSI Pod Identity assoc) + managed node group `karpenter`
-  karpenter.tf                    # Karpenter Helm CRD + chart + `default` + `gpu` NodePool/EC2NodeClass
+  karpenter.tf                    # Karpenter Helm CRD + chart + 4 NodePools/EC2NodeClasses: `default`, `gpu` (legacy AL2023), `ubuntu`, `gpu-ubuntu`
   iam.tf                          # Shared Pod Identity assume policy + EBS CSI role + ALB controller role/policy/assoc
   iam-mimir.tf                    # Mimir Pod Identity role + S3 access policy + association
+  iam-buildkit.tf            # `buildkit` namespace + `buildkit` SA + Pod Identity role with ECR push (used by BuildKit Job)
   s3-mimir.tf                     # Mimir blocks/alertmanager/ruler buckets + lifecycle + encryption
   ecr.tf                          # for_each over local.ecr_repositories
   storage-classes.tf              # gp3 default StorageClass (foundational, kept off GitOps)
@@ -45,7 +46,9 @@ argocd/applications/              # GitOps — discovered recursively by the roo
     grafana.yaml                  # ApplicationSet, Mimir + Loki datasources, inline + community dashboards
     grafana-loki.yaml             # ApplicationSet, single-binary Loki on filesystem (no Promtail)
     kube-state-metrics.yaml       # ApplicationSet, supplies kube_pod_*/kube_node_*/kube_deployment_* to Mimir
-  mlops/                          # MLOps-layer slot — currently empty placeholder, JupyterLab is manual
+    nvidia-gpu-operator.yaml      # ApplicationSet, GPU Operator chart (driver + toolkit + device-plugin + dcgm + NFD/GFD)
+  mlops/
+    jupyterlab-llm.yaml           # Plain Application (not ApplicationSet) — manual sync, points at argocd/manifests/jupyterlab-llm/
 
 argocd/helm-values/               # static Helm values pulled via multi-source $values ref
   traefik/values.yaml
@@ -55,14 +58,18 @@ argocd/helm-values/               # static Helm values pulled via multi-source $
   grafana/values.yaml             # admin creds, Mimir+Loki datasources, dashboards (1860 + dotdc 15757-15760 + inline kubernetes-logs)
   loki/values.yaml                # SingleBinary, filesystem, lokiCanary/test/chunksCache/resultsCache disabled
   kube-state-metrics/values.yaml  # 1 replica, pinned to system node group
+  nvidia-gpu-operator/values.yaml # driver pinned to nvcr.io tag, toolkit on, MIG/vGPU off, dcgm-exporter + NFD/GFD on
 
-argocd/manifests/                 # raw manifests slot (currently empty placeholder)
+argocd/manifests/                 # raw manifests slot, Argo applies these directly
+  jupyterlab-llm/                 # Namespace + Deployment + PVC + Service for JupyterLab on `gpu-ubuntu` NodePool
 
-mlops/                            # MLOps workloads — built and applied manually, not via GitOps
+mlops/                            # MLOps workloads — image build sources + smoke-test pods (NOT applied via GitOps)
   jupyterlab-llm/
     Dockerfile                    # CUDA 12.6 + JupyterLab 4.2 + PyTorch + HuggingFace + LangChain + Tesseract OCR
+    build-job.yaml                # Kubernetes Job: BuildKit rootless, builds image from this folder, pushes to ECR
     tesseract/                    # Tesseract language data download script
-    kubernetes/                   # Namespace + Deployment + PVC + Service for JupyterLab on Karpenter `gpu` NodePool
+  gpu-test-pod.yaml               # Smoke test Pod for GPU stack — runs nvidia-smi on `gpu-ubuntu`
+  ubuntu-test-pod.yaml            # Smoke test Pod for Ubuntu bootstrap — runs on `ubuntu` debug NodePool
 ```
 
 ## Upstream modules & references
@@ -108,8 +115,9 @@ ApplicationSets in `argocd/applications/{core,mlops}/` use a `clusters` generato
 - **EKS** → **EBS CSI Pod Identity** (`eks.tf`): inline `pod_identity_association` inside the `aws-ebs-csi-driver` addon block, referencing `aws_iam_role.ebs_csi_controller` from `iam.tf`.
 - **EKS** → **ALB controller Pod Identity** (`iam.tf`): standalone `aws_eks_pod_identity_association` for `aws-load-balancer-controller` SA in `kube-system`.
 - **EKS** → **Mimir Pod Identity** (`iam-mimir.tf`): `aws_eks_pod_identity_association` for `mimir` SA in `monitoring`, role with read/write to all three Mimir buckets.
+- **EKS** → **buildkit Pod Identity** (`iam-buildkit.tf`): `buildkit` namespace + `buildkit` SA created in TF (so the Pod Identity assoc has stable subjects to bind), role with ECR push to every repo in `local.ecr_repositories`. Consumed by `mlops/jupyterlab-llm/build-job.yaml`.
 - All Pod Identity roles share a single assume policy (`data.aws_iam_policy_document.pod_identity_assume` in `iam.tf`) trusting `pods.eks.amazonaws.com`.
-- **Karpenter NodePools** (`karpenter.tf`): two pools — `default` (CPU SPOT, t* family, 4–8 vCPU) and `gpu` (on-demand g4dn.xlarge/g4dn.2xlarge/g5.xlarge/g5.2xlarge, taint `nvidia.com/gpu=true:NoSchedule`, label `nodegroup: gpu`, `consolidateAfter: 30m` to keep nodes warm against driver compile + image pull cost).
+- **Karpenter NodePools** (`karpenter.tf`): four pools — see [Karpenter NodePools](#karpenter-nodepools) for the full table. The Ubuntu pools use `amiFamily: Custom` with userData rendered via `data "cloudinit_config"` (Karpenter v1 dropped first-class `Ubuntu` family).
 - **`gp3` StorageClass** (`storage-classes.tf`): `kubernetes_storage_class_v1` resource, `is-default-class: true`. Replaces the in-tree gp2 default. Lives in TF for bootstrap reasons.
 - **ArgoCD Helm release** (`argocd.tf`): `global.nodeSelector` + `global.tolerations` pin all components (controller/server/repoServer/applicationSet/redis) to the `karpenter` system group.
 - **ArgoCD Helm release** → **cluster Secret** → **ApplicationSets**: the chain that lets Git manifests consume TF outputs.
@@ -126,33 +134,41 @@ ApplicationSets in `argocd/applications/{core,mlops}/` use a `clusters` generato
   - `1860` (Node Exporter Full) — needs node_exporter, which Alloy emits with `instance=$NODE_NAME` label.
   - `15757`–`15760` from dotdc/grafana-dashboards-kubernetes — kube-prom-mixin views (Global / Namespaces / Nodes / Pods). Need KSM + cAdvisor + node_exporter, all of which we have. The `cluster` template variable resolves via `external_labels=mltest` set by Alloy.
   - `kubernetes-logs` (inline JSON) — purpose-built log explorer using only `namespace` + `container` labels (no `stream`, `job`, etc., which `loki.source.kubernetes` doesn't auto-populate).
+- **NVIDIA GPU Operator** ApplicationSet: gpu-operator chart with driver-DaemonSet + toolkit + device-plugin + dcgm-exporter + NFD + GFD. Driver image version pinned in values (chart default tag often missing for `-amzn2023` on nvcr.io; the `gpu-ubuntu` NodePool uses Ubuntu where coverage is reliable). Tolerates `nvidia.com/gpu=true:NoSchedule`. `ServerSideApply=true` in syncOptions because the `ClusterPolicy` CRD has annotations that exceed kubectl client-side apply limit.
+- **JupyterLab** plain `Application` (not `ApplicationSet`), **manual sync**: manifests at `argocd/manifests/jupyterlab-llm/` (namespace `jupyterlab`), image at `<acct>.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:<tag>`. Manual sync because image must exist in ECR before first sync — chicken-and-egg with the build Job. Deploys onto `gpu-ubuntu` Karpenter NodePool. Tag is bumped explicitly per release in **both** `mlops/jupyterlab-llm/build-job.yaml` and `argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml` — no `:latest`/`:dev` mutability. Same-tag rebuilds would need Argo Image Updater (digest strategy), not deployed yet.
 
 ## Karpenter NodePools
 
-Two pools, distinct intents:
+Four pools:
 
-| NodePool | Instance types | Capacity | Taint | Use |
-|---|---|---|---|---|
-| `default` | t-family 4–8 vCPU | spot | none | General workloads (Mimir, Loki, Grafana, etc.) |
-| `gpu` | g4dn.xlarge, g4dn.2xlarge, g5.xlarge, g5.2xlarge | on-demand | `nvidia.com/gpu=true:NoSchedule` | JupyterLab and any other `nvidia.com/gpu` consumer |
+| NodePool | AMI | Instance types | Capacity | Taint | Use |
+|---|---|---|---|---|---|
+| `default` | AL2023 (alias `al2023@latest`) | t-family 2–8 vCPU | spot | none | General workloads (Mimir, Loki, Grafana, BuildKit Job, etc.) |
+| `gpu` | AL2023 standard via SSM (`amiFamily: AL2023`) | g4dn.xlarge / g4dn.2xlarge / g5.xlarge / g5.2xlarge | spot | `nvidia.com/gpu=true:NoSchedule` | **Legacy / unused.** Operator-driver path blocked by missing nvcr.io `-amzn2023` driver tags. Kept as reference. |
+| `ubuntu` | Canonical Ubuntu 24.04 EKS via SSM (`amiFamily: Custom` + `cloudinit_config` userData) | t-family 2–4 vCPU | spot | `nodegroup=ubuntu:NoSchedule` | Sandbox for cloud-init / userData debugging |
+| `gpu-ubuntu` | Same Ubuntu 24.04 AMI | g4dn / g5 .xlarge / .2xlarge | spot | `nvidia.com/gpu=true:NoSchedule` | JupyterLab + any GPU workload — driver installed by GPU Operator (nvcr.io ubuntu24.04 tags reliable) |
 
 The system node group (managed, on EKS side) runs Karpenter itself plus ArgoCD + KSM. The split is: managed group hosts what's required for Karpenter to function; Karpenter provisions capacity for everything above it.
+
+**Karpenter alias quirk:** `alias: al2023@latest` auto-resolves to the **NVIDIA-optimized** AL2023 AMI (`*-nvidia-*`) when the provisioned instance type has a GPU. Same for `bottlerocket@latest`. This is why the legacy `gpu` pool uses an explicit SSM parameter for standard AL2023 instead of the alias — to actually exercise the Operator-driver path.
 
 ## Provider auth
 
 All Kubernetes-scoped providers (`helm`, `kubectl`, `kubernetes`) authenticate via `exec` calling `aws eks get-token --cluster-name <module.eks.cluster_name>`. Do not replace this with a static `data.aws_eks_cluster_auth.cluster.token` — that token has a ~15-minute TTL and expires mid-apply on long runs; `exec` refreshes on each provider call.
 
-## JupyterLab (manual)
+## JupyterLab — split between manual build and Argo deploy
 
-`mlops/jupyterlab-llm/` is intentionally outside the GitOps loop. The Dockerfile bakes CUDA 12.6, PyTorch, HuggingFace transformers/diffusers, LangChain, and Tesseract OCR into one image; `kubernetes/` has the manifests to run it.
+Two-stage flow with a deliberate cut between image build (manual) and deploy (GitOps, manual sync):
 
-The Pod uses `nodeSelector: nodegroup=gpu` + `tolerations: nvidia.com/gpu=true:NoSchedule` to land on a Karpenter-provisioned GPU node. PVC uses dynamic `gp3` (no static PV/AZ pinning — Karpenter picks any AZ; `WaitForFirstConsumer` handles AZ matching automatically). NVIDIA driver + container toolkit must already be present on the node — currently not installed (NVIDIA GPU Operator ApplicationSet is on the roadmap but not deployed yet, see README's TODO list).
+1. **Image build** — `mlops/jupyterlab-llm/Dockerfile` baked into a CUDA 12.6 + JupyterLab 4.2 + PyTorch + HuggingFace + LangChain + Tesseract image. Built **in-cluster** by `mlops/jupyterlab-llm/build-job.yaml` — Kubernetes Job using `moby/buildkit:rootless`, runs on `default` Karpenter pool, pushes to `<acct>.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:<tag>` and layer cache to `jupyterlab-llm-cache`. Authenticates to ECR via Pod Identity on SA `buildkit` in `buildkit` namespace ([iam-buildkit.tf](terraform/iam-buildkit.tf)). Trigger: `kubectl replace --force -f mlops/jupyterlab-llm/build-job.yaml` (Job is immutable). No shell wrappers.
 
-When ready to migrate to GitOps: drop a JupyterLab ApplicationSet under `argocd/applications/mlops/`, point it at `mlops/jupyterlab-llm/kubernetes/`. The repo structure already has the `mlops/` ApplicationSet directory and `argocd/manifests/` slot prepared.
+2. **Deploy** — Argo `Application` at `argocd/applications/mlops/jupyterlab-llm.yaml`, manifests at `argocd/manifests/jupyterlab-llm/` (namespace `jupyterlab` — Namespace + Deployment + PVC + Service). **Manual sync** (no `automated{}` block) because image must be in ECR before first sync, otherwise pods stay `ImagePullBackOff`. Pod uses `nodeSelector: nodegroup=gpu-ubuntu` + `tolerations: nvidia.com/gpu=true:NoSchedule`. PVC on dynamic `gp3` (`WaitForFirstConsumer` handles AZ matching). Trigger: `argocd app sync jupyterlab-llm` (or UI Sync button).
+
+Tag bumps: edit the tag in **both** `build-job.yaml` (the `--output ...:<TAG>` arg) and `jupyterlab-llm-pod.yaml` (the `image: ...:<TAG>` line). Commit, build, sync. No `:latest`/`:dev` mutability — releases are explicit and reproducible.
 
 ## ECR repositories
 
-Created via `for_each` over `local.ecr_repositories` in [main.tf](terraform/main.tf). Currently `["jupyterlab-llm"]`. Add new image repos by appending to that list — single-line change.
+Created via `for_each` over `local.ecr_repositories` in [main.tf](terraform/main.tf). Currently `["jupyterlab-llm", "jupyterlab-llm-cache"]` — second one stores BuildKit layer cache for incremental rebuilds. Add new image repos by appending to that list — single-line change. The `buildkit` Pod Identity role auto-grants ECR push on every repo in the list.
 
 ## Bootstrap
 
@@ -186,14 +202,10 @@ kubectl -n monitoring port-forward ds/alloy 12345:12345
 kubectl -n monitoring port-forward svc/mimir-gateway 8090:80
 curl http://localhost:8090/prometheus/api/v1/labels
 
-# Build & push JupyterLab image
-cd mlops/jupyterlab-llm
-docker build -t jupyterlab-llm:25.01 .
-aws ecr get-login-password --region eu-west-1 \
-  | docker login --username AWS --password-stdin <account>.dkr.ecr.eu-west-1.amazonaws.com
-docker tag jupyterlab-llm:25.01 <account>.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:25.01
-docker push <account>.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:25.01
+# Build & push JupyterLab image (BuildKit rootless Job in `buildkit` ns)
+kubectl replace --force -f mlops/jupyterlab-llm/build-job.yaml
+kubectl -n buildkit logs -f -l job-name=build-jupyterlab-llm --all-containers
 
-# Apply JupyterLab manifests manually
-kubectl apply -f mlops/jupyterlab-llm/kubernetes/
+# Deploy / refresh JupyterLab (manual sync, after build finishes)
+argocd app sync jupyterlab-llm
 ```

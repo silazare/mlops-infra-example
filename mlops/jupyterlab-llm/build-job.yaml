@@ -9,7 +9,7 @@ spec:
   backoffLimit: 0
   template:
     spec:
-      serviceAccountName: image-builder
+      serviceAccountName: buildkit
       restartPolicy: Never
       nodeSelector:
         nodegroup: default
@@ -76,13 +76,13 @@ spec:
               mountPath: /home/user/.local/share/buildkit
           resources:
             requests:
-              cpu: "2"
-              memory: "8Gi"
-              ephemeral-storage: "20Gi"
+              cpu: "4"
+              memory: "16Gi"
+              ephemeral-storage: "40Gi"
             limits:
-              cpu: "2"
-              memory: "8Gi"
-              ephemeral-storage: "20Gi"
+              cpu: "4"
+              memory: "16Gi"
+              ephemeral-storage: "40Gi"
       volumes:
         - name: workspace
           emptyDir: {}
