@@ -34,6 +34,18 @@ spec:
       destination:
         server: "{{server}}"
         namespace: piraeus-datastore
+      ignoreDifferences:
+        - group: ""
+          kind: Secret
+          name: piraeus-operator-tls
+          namespace: piraeus-datastore
+          jsonPointers:
+            - /data
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          name: piraeus-operator-validating-webhook-configuration
+          jqPathExpressions:
+            - .webhooks[].clientConfig.caBundle
       syncPolicy:
         automated:
           prune: true
@@ -41,3 +53,4 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+          - RespectIgnoreDifferences=true
