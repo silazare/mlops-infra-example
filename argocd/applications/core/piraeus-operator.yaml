@@ -21,7 +21,7 @@ spec:
     spec:
       project: default
       sources:
-        - repoURL: oci://ghcr.io/piraeusdatastore/piraeus-operator
+        - repoURL: ghcr.io/piraeusdatastore/piraeus-operator
           chart: piraeus
           targetRevision: 2.10.7
           helm:
