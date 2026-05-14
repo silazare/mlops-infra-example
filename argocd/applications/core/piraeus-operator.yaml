@@ -1,0 +1,43 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: piraeus-operator
+  namespace: argocd
+spec:
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+  template:
+    metadata:
+      name: piraeus-operator
+      annotations:
+        # CRDs from this chart must be installed before linstor-cluster
+        argocd.argoproj.io/sync-wave: "0"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      sources:
+        - repoURL: oci://ghcr.io/piraeusdatastore/piraeus-operator
+          chart: piraeus
+          targetRevision: 2.10.7
+          helm:
+            releaseName: piraeus-operator
+            valueFiles:
+              - $values/argocd/helm-values/piraeus-operator/values.yaml
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: "{{metadata.annotations.target_revision}}"
+          ref: values
+      destination:
+        server: "{{server}}"
+        namespace: piraeus-datastore
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

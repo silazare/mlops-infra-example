@@ -35,3 +35,6 @@ backend.config
 Gopkg.lock
 vendor
 .test-data
+
+# Docs
+*PLAN*.md

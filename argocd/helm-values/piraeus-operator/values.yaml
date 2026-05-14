@@ -1,0 +1,23 @@
+# Piraeus Operator
+installCRDs: true
+
+nodeSelector:
+  karpenter.sh/controller: "true"
+
+tolerations:
+  - key: drbd.linbit.com/lost-quorum
+    effect: NoSchedule
+  - key: drbd.linbit.com/force-io-error
+    effect: NoSchedule
+  - key: karpenter.sh/controller
+    operator: Exists
+    effect: NoSchedule
+
+operator:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

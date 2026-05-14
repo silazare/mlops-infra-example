@@ -13,6 +13,7 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 - [x] AWS Load Balancer Controller (Helm release; IAM stays in TF)
 - [x] NVIDIA GPU Operator
 - [x] Grafana Mimir + Alloy — Monitoring
+- [ ] Piraeus Operator for Linstor tests
 
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] JupyterLab (CUDA/LLM) — image built in-cluster via BuildKit Job, deploy via manual-sync Argo Application

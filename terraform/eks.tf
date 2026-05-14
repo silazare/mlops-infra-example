@@ -101,6 +101,66 @@ module "eks" {
         "ebs.csi.aws.com/cluster-name" = local.name
       }
     }
+
+    # Piraeus Operator Linstor storage POC — Ubuntu nodes with a separate raw EBS volume
+    linstor-storage = {
+      instance_types = ["c5.large"]
+      capacity_type  = "ON_DEMAND"
+
+      min_size     = 1
+      max_size     = 2
+      desired_size = 1
+
+      ami_type                       = "CUSTOM"
+      ami_id                         = nonsensitive(data.aws_ssm_parameter.ubuntu_eks_ami.value)
+      use_latest_ami_release_version = false
+      enable_bootstrap_user_data     = false
+      user_data_template_path        = "${path.module}/userdata/linstor-storage.sh.tpl"
+
+      # DeleteOnTermination=true on the data disk emulates "disk dies with the node" for chaos tests
+      block_device_mappings = {
+        sda1 = {
+          device_name = "/dev/sda1"
+          ebs = {
+            volume_size           = 32
+            volume_type           = "gp3"
+            encrypted             = true
+            delete_on_termination = true
+          }
+        }
+        sdb = {
+          device_name = "/dev/sdb"
+          ebs = {
+            volume_size           = 128
+            volume_type           = "gp3"
+            encrypted             = true
+            delete_on_termination = true
+          }
+        }
+      }
+
+      iam_role_additional_policies = {
+        AmazonEBSCSIDriverPolicy     = "arn:aws:iam::aws:policy/AmazonEBSCSIDriverEKSClusterScopedPolicy"
+        AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+      }
+
+      labels = {
+        "storage.k8s.io/tier"      = "hdd"
+        "storage.k8s.io/satellite" = "yes"
+      }
+
+      taints = {
+        linstor_storage = {
+          key    = "linstor-storage"
+          value  = "true"
+          effect = "NO_SCHEDULE"
+        }
+      }
+
+      tags = {
+        "ebs.csi.aws.com/cluster-name" = local.name
+      }
+    }
   }
 
   node_security_group_tags = {
