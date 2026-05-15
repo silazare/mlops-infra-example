@@ -3,21 +3,15 @@ set -ex
 
 export DEBIAN_FRONTEND=noninteractive
 
-# === 1. LVM + DRBD userspace + extra kernel modules ===
+# === 1. LVM + kernel headers (DRBD9 is handled by the operator) ===
 apt-get update
 apt-get install -y \
   lvm2 \
-  drbd-utils \
   thin-provisioning-tools \
-  linux-modules-extra-$(uname -r) \
+  linux-headers-virtual \
   nvme-cli
 
-# === 2. DRBD kernel module — load + persist ===
-modprobe drbd usermode_helper=disabled
-echo "drbd" > /etc/modules-load.d/drbd.conf
-echo "options drbd usermode_helper=disabled" > /etc/modprobe.d/drbd.conf
-
-# === 3. udev rule: stable symlink /dev/linstor-data → first non-root NVMe ===
+# === 2. udev rule: stable symlink /dev/linstor-data → first non-root NVMe ===
 cat > /etc/udev/rules.d/99-linstor-data.rules <<'UDEV'
 KERNEL=="nvme[1-9]n1", SUBSYSTEM=="block", ATTRS{model}=="Amazon Elastic Block Store", SYMLINK+="linstor-data"
 UDEV
@@ -30,13 +24,13 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# === 4. Module-provided pre-bootstrap hook if set in TF ===
+# === 3. Module-provided pre-bootstrap hook if set in TF ===
 ${pre_bootstrap_user_data}
 
-# === 5. EKS bootstrap — join kubelet to the cluster.
+# === 4. EKS bootstrap — join kubelet to the cluster.
 /etc/eks/bootstrap.sh ${cluster_name} \
   --b64-cluster-ca ${cluster_auth_base64} \
   --apiserver-endpoint ${cluster_endpoint}
 
-# === 6. Module-provided post-bootstrap hook if set in TF ===
+# === 5. Module-provided post-bootstrap hook if set in TF ===
 ${post_bootstrap_user_data}

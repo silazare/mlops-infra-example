@@ -19,15 +19,6 @@ linstorCluster:
       value: "true"
       effect: NoSchedule
 
-  # Cluster-wide LINSTOR properties.
-  properties:
-    # When a Pod consumes a remote (diskless) replica on a node that has a
-    # compatible storage pool, LINSTOR adds a local replica so subsequent
-    # reads/writes stay local. No-op on a single-node POC; it starts
-    # paying off in Phase 2 with multiple satellite nodes.
-    - name: Autoplace/AutoDiskful
-      value: "true"
-
 # ----------------------------------------------------------------------------
 # Satellite configuration — one entry per pool/topology
 # ----------------------------------------------------------------------------
