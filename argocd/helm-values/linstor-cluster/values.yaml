@@ -51,7 +51,7 @@ linstorSatelliteConfigurations:
 storageClasses:
   # === Phase 1 SC: single replica, no DRBD over the wire ===
   - name: linstor-hdd-1r
-    reclaimPolicy: Delete
+    reclaimPolicy: Retain
     allowVolumeExpansion: true
     volumeBindingMode: WaitForFirstConsumer
     provisioner: linstor.csi.linbit.com
@@ -72,7 +72,7 @@ storageClasses:
 
   # === Phase 2 SC: 2 replicas, real DRBD replication between satellite nodes ===
   - name: linstor-hdd-2r
-    reclaimPolicy: Delete
+    reclaimPolicy: Retain
     allowVolumeExpansion: true
     volumeBindingMode: WaitForFirstConsumer
     provisioner: linstor.csi.linbit.com

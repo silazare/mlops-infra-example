@@ -1,0 +1,67 @@
+# Smoke-test for LINSTOR/Piraeus PV stack — Phase 1 (single replica)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: linstor-test
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hdd1-test-pvc
+  namespace: linstor-test
+spec:
+  storageClassName: linstor-hdd-1r
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hdd1-test-pod
+  namespace: linstor-test
+  labels:
+    app: hdd1-test-pod
+spec:
+  # Tolerate the storage NG taint so the Pod CAN land on a storage node.
+  tolerations:
+    - key: linstor-storage
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  restartPolicy: Always
+  containers:
+    - name: writer
+      image: alpine:3.20
+      command:
+        - sh
+        - -c
+      args:
+        - |
+          set -eu
+          echo "===== existing /data/log (from previous runs) ====="
+          [ -f /data/log ] && cat /data/log || echo "(file empty, fresh PVC)"
+          echo "===== writer loop starts ====="
+          echo "[$(date -Iseconds)] startup pod=$HOSTNAME" | tee -a /data/log
+          while true; do
+            echo "[$(date -Iseconds)] tick" | tee -a /data/log
+            sync
+            sleep 5
+          done
+      volumeMounts:
+        - name: data
+          mountPath: /data
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: hdd1-test-pvc
