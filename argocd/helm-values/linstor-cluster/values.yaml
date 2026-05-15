@@ -57,6 +57,7 @@ storageClasses:
     provisioner: linstor.csi.linbit.com
     parameters:
       linstor.csi.linbit.com/storagePool: "hdd-pool"
+      # how many replicas to create during PVC provisioning
       linstor.csi.linbit.com/autoPlace: "1"
       # DRBD layer is included even at autoPlace=1 so existing volumes can
       # be grown to 2/3 replicas later without recreating them — the
