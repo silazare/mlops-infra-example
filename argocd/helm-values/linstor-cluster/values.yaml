@@ -1,0 +1,97 @@
+# LINSTOR Cluster values for the linstor-cluster chart
+
+# ----------------------------------------------------------------------------
+# LinstorCluster — controls where LINBIT SDS components run + global props
+# ----------------------------------------------------------------------------
+linstorCluster:
+  # Pin every LINBIT SDS component (satellite DaemonSet, LINSTOR controller,
+  # CSI controller/node) onto nodes carrying the satellite label. This
+  # mirrors the bare-metal layout where the storage nodes are the only
+  # workers — no dedicated system-worker tier exists there.
+  nodeSelector:
+    storage.k8s.io/satellite: "yes"
+
+  # Toleration to bypass the linstor-storage NG taint. Applies to ALL
+  # LINBIT SDS workloads.
+  tolerations:
+    - key: linstor-storage
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+
+  # Cluster-wide LINSTOR properties.
+  properties:
+    # When a Pod consumes a remote (diskless) replica on a node that has a
+    # compatible storage pool, LINSTOR adds a local replica so subsequent
+    # reads/writes stay local. No-op on a single-node POC; it starts
+    # paying off in Phase 2 with multiple satellite nodes.
+    - name: Autoplace/AutoDiskful
+      value: "true"
+
+# ----------------------------------------------------------------------------
+# Satellite configuration — one entry per pool/topology
+# ----------------------------------------------------------------------------
+linstorSatelliteConfigurations:
+  - name: hdd-pool
+    # Apply ONLY on nodes labeled tier=hdd (the linstor-storage NG nodes).
+    nodeSelector:
+      storage.k8s.io/tier: hdd
+    storagePools:
+      - name: hdd-pool
+        # LVM-thin on top of the data disk. The operator's satellite will
+        # run (on first reconcile):
+        #   pvcreate /dev/linstor-data
+        #   vgcreate vg_data /dev/linstor-data
+        #   lvcreate -l 100%FREE -T vg_data/thin_data
+        lvmThinPool:
+          volumeGroup: vg_data
+          thinPool: thin_data
+        # /dev/linstor-data is a udev-managed stable symlink pointing at
+        # the first non-root NVMe (the data EBS volume attached by the
+        # launch template). See terraform/userdata/linstor-storage.sh.tpl.
+        source:
+          hostDevices:
+            - /dev/linstor-data
+
+# ----------------------------------------------------------------------------
+# Storage classes — what apps actually consume via PVC
+# ----------------------------------------------------------------------------
+
+storageClasses:
+  # === Phase 1 SC: single replica, no DRBD over the wire ===
+  - name: linstor-hdd-1r
+    reclaimPolicy: Delete
+    allowVolumeExpansion: true
+    volumeBindingMode: WaitForFirstConsumer
+    provisioner: linstor.csi.linbit.com
+    parameters:
+      linstor.csi.linbit.com/storagePool: "hdd-pool"
+      linstor.csi.linbit.com/autoPlace: "1"
+      # DRBD layer is included even at autoPlace=1 so existing volumes can
+      # be grown to 2/3 replicas later without recreating them — the
+      # /dev/drbdX device is already in the data path.
+      linstor.csi.linbit.com/layerList: "drbd storage"
+      linstor.csi.linbit.com/allowRemoteVolumeAccess: "true"
+      csi.storage.k8s.io/fstype: ext4
+      # DRBD tunings from Cozystack: refuse to split-brain, prefer suspend-io.
+      property.linstor.csi.linbit.com/DrbdOptions/auto-quorum: suspend-io
+      property.linstor.csi.linbit.com/DrbdOptions/Resource/on-no-data-accessible: suspend-io
+      property.linstor.csi.linbit.com/DrbdOptions/Resource/on-suspended-primary-outdated: force-secondary
+      property.linstor.csi.linbit.com/DrbdOptions/Net/rr-conflict: retry-connect
+
+  # === Phase 2 SC: 2 replicas, real DRBD replication between satellite nodes ===
+  - name: linstor-hdd-2r
+    reclaimPolicy: Delete
+    allowVolumeExpansion: true
+    volumeBindingMode: WaitForFirstConsumer
+    provisioner: linstor.csi.linbit.com
+    parameters:
+      linstor.csi.linbit.com/storagePool: "hdd-pool"
+      linstor.csi.linbit.com/autoPlace: "2"
+      linstor.csi.linbit.com/layerList: "drbd storage"
+      linstor.csi.linbit.com/allowRemoteVolumeAccess: "true"
+      csi.storage.k8s.io/fstype: ext4
+      property.linstor.csi.linbit.com/DrbdOptions/auto-quorum: suspend-io
+      property.linstor.csi.linbit.com/DrbdOptions/Resource/on-no-data-accessible: suspend-io
+      property.linstor.csi.linbit.com/DrbdOptions/Resource/on-suspended-primary-outdated: force-secondary
+      property.linstor.csi.linbit.com/DrbdOptions/Net/rr-conflict: retry-connect
