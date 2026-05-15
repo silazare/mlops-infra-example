@@ -1,16 +1,18 @@
-# Piraeus Operator
+# Piraeus Operator values for the piraeus-operator chart
+
 installCRDs: true
 
 nodeSelector:
-  karpenter.sh/controller: "true"
+  storage.k8s.io/satellite: "yes"
 
 tolerations:
   - key: drbd.linbit.com/lost-quorum
     effect: NoSchedule
   - key: drbd.linbit.com/force-io-error
     effect: NoSchedule
-  - key: karpenter.sh/controller
-    operator: Exists
+  - key: linstor-storage
+    operator: Equal
+    value: "true"
     effect: NoSchedule
 
 operator:
