@@ -120,3 +120,30 @@ argocd app sync jupyterlab-llm
 ```
 
 ## Piraeus Operator tests for Linstor
+
+Sandbox for a Piraeus / LINSTOR / DRBD persistent-storage stack
+Settings at [argocd/helm-values/linstor-cluster/values.yaml](argocd/helm-values/linstor-cluster/values.yaml)
+
+Three placement modes, one StorageClass per replica count:
+
+| Manifest | StorageClass | Placement | What it proves |
+|---|---|---|---|
+| [mlops/hdd1-test-sts.yaml](mlops/hdd1-test-sts.yaml) | `linstor-hdd-1r` (`autoPlace=1`) | 1 diskful replica on a storage node | Provisioning + ext4 + Retain reclaim works; PV survives Pod recreate on the same node |
+| [mlops/hdd2-test-sts.yaml](mlops/hdd2-test-sts.yaml) | `linstor-hdd-2r` (`autoPlace=2`) | 2 diskful replicas across storage nodes | Synchronous DRBD replication; Pod can come back on either replica node |
+| [mlops/diskless-test-sts.yaml](mlops/diskless-test-sts.yaml) | `linstor-hdd-2r` | 2 diskful on storage NG + 1 diskless DRBD client on karpenter `ubuntu` node | Compute / storage separation pattern — the bare-metal target shape where GPU nodes mount data over the network from CPU storage nodes |
+
+### Quick check
+
+```shell
+# Satellites + storage pools
+k -n piraeus-datastore exec deploy/linstor-controller -- linstor node list
+k -n piraeus-datastore exec deploy/linstor-controller -- linstor storage-pool list
+
+# Apply any of the test STS and watch the resource list
+k apply -f mlops/hdd2-test-sts.yaml
+k -n piraeus-datastore exec deploy/linstor-controller -- linstor resource list
+
+# Live DRBD state on a specific satellite
+k -n piraeus-datastore get pod -l app.kubernetes.io/component=linstor-satellite -o wide
+k -n piraeus-datastore exec <satellite-pod> -- drbdadm status
+```

@@ -212,7 +212,7 @@ data "cloudinit_config" "ubuntu_node" {
       /etc/eks/bootstrap.sh ${module.eks.cluster_name} \
         --b64-cluster-ca ${module.eks.cluster_certificate_authority_data} \
         --apiserver-endpoint ${module.eks.cluster_endpoint} \
-        --kubelet-extra-args "--node-labels=nodegroup=ubuntu,storage.k8s.io/satellite=yes --register-with-taints=nodegroup=ubuntu:NoSchedule"
+        --kubelet-extra-args "--node-labels=nodegroup=ubuntu --register-with-taints=nodegroup=ubuntu:NoSchedule"
     EOT
   }
 }
