@@ -1,10 +1,10 @@
 // Default EC2NodeClass and NodePool — general-purpose CPU workloads
-resource "kubectl_manifest" "karpenter_ec2nodeclass_default" {
+resource "kubectl_manifest" "karpenter_ec2nodeclass_al2023" {
   yaml_body = <<EOF
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
-  name: default
+  name: al2023
 spec:
   amiSelectorTerms:
     - alias: al2023@latest # Amazon Linux 2023
@@ -39,12 +39,12 @@ EOF
   ]
 }
 
-resource "kubectl_manifest" "karpenter_nodepool_default" {
+resource "kubectl_manifest" "karpenter_nodepool_al2023" {
   yaml_body = <<EOF
 apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
-  name: default
+  name: al2023
 spec:
   disruption:
     budgets:
@@ -57,13 +57,13 @@ spec:
   template:
     metadata:
       labels:
-        nodegroup: default
+        nodegroup: al2023
     spec:
       expireAfter: 720h
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
-        name: default
+        name: al2023
       requirements:
         - key: "karpenter.k8s.aws/instance-category"
           operator: In
@@ -89,17 +89,17 @@ EOF
   depends_on = [
     helm_release.karpenter_crd,
     helm_release.karpenter,
-    kubectl_manifest.karpenter_ec2nodeclass_default
+    kubectl_manifest.karpenter_ec2nodeclass_al2023
   ]
 }
 
 // GPU EC2NodeClass and NodePool — GPU workloads
-resource "kubectl_manifest" "karpenter_ec2nodeclass_gpu" {
+resource "kubectl_manifest" "karpenter_ec2nodeclass_al2023_gpu" {
   yaml_body = <<EOF
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
-  name: gpu
+  name: al2023-gpu
 spec:
   amiFamily: AL2023
   amiSelectorTerms:
@@ -134,12 +134,12 @@ EOF
   ]
 }
 
-resource "kubectl_manifest" "karpenter_nodepool_gpu" {
+resource "kubectl_manifest" "karpenter_nodepool_al2023_gpu" {
   yaml_body = <<EOF
 apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
-  name: gpu
+  name: al2023-gpu
 spec:
   disruption:
     budgets:
@@ -152,7 +152,7 @@ spec:
   template:
     metadata:
       labels:
-        nodegroup: gpu
+        nodegroup: al2023-gpu
     spec:
       # Block non-GPU pods; only workloads with the matching toleration land here.
       # The NVIDIA GPU Operator components tolerate this taint by default.
@@ -164,7 +164,7 @@ spec:
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
-        name: gpu
+        name: al2023-gpu
       requirements:
         # g4dn = T4, g5 = A10G; both work with NVIDIA GPU Operator on AL2023
         - key: "node.kubernetes.io/instance-type"
@@ -184,7 +184,7 @@ EOF
   depends_on = [
     helm_release.karpenter_crd,
     helm_release.karpenter,
-    kubectl_manifest.karpenter_ec2nodeclass_gpu
+    kubectl_manifest.karpenter_ec2nodeclass_al2023_gpu
   ]
 }
 
@@ -332,12 +332,12 @@ data "cloudinit_config" "ubuntu_gpu_node" {
   }
 }
 
-resource "kubectl_manifest" "karpenter_ec2nodeclass_gpu_ubuntu" {
+resource "kubectl_manifest" "karpenter_ec2nodeclass_ubuntu_gpu" {
   yaml_body = <<EOF
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
-  name: gpu-ubuntu
+  name: ubuntu-gpu
 spec:
   amiFamily: Custom
   amiSelectorTerms:
@@ -374,12 +374,12 @@ EOF
   ]
 }
 
-resource "kubectl_manifest" "karpenter_nodepool_gpu_ubuntu" {
+resource "kubectl_manifest" "karpenter_nodepool_ubuntu_gpu" {
   yaml_body = <<EOF
 apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
-  name: gpu-ubuntu
+  name: ubuntu-gpu
 spec:
   disruption:
     budgets:
@@ -391,7 +391,7 @@ spec:
   template:
     metadata:
       labels:
-        nodegroup: gpu-ubuntu
+        nodegroup: ubuntu-gpu
     spec:
       taints:
       # Block non-GPU pods; only workloads with the matching toleration land here.
@@ -403,7 +403,7 @@ spec:
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
-        name: gpu-ubuntu
+        name: ubuntu-gpu
       requirements:
         - key: "node.kubernetes.io/instance-type"
           operator: In
@@ -422,6 +422,6 @@ EOF
   depends_on = [
     helm_release.karpenter_crd,
     helm_release.karpenter,
-    kubectl_manifest.karpenter_ec2nodeclass_gpu_ubuntu
+    kubectl_manifest.karpenter_ec2nodeclass_ubuntu_gpu
   ]
 }
