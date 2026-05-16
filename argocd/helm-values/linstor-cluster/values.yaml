@@ -11,12 +11,17 @@ linstorCluster:
   nodeSelector:
     storage.k8s.io/satellite: "yes"
 
-  # Toleration to bypass the linstor-storage NG taint. Applies to ALL
-  # LINBIT SDS workloads.
+  # Tolerations for the taints on nodes that should host LINBIT SDS components:
+  #   linstor-storage    — the managed `linstor-storage` NG (HDD storage tier)
+  #   nodegroup=ubuntu   — karpenter `ubuntu` NodePool (diskless DRBD clients)
   tolerations:
     - key: linstor-storage
       operator: Equal
       value: "true"
+      effect: NoSchedule
+    - key: nodegroup
+      operator: Equal
+      value: ubuntu
       effect: NoSchedule
 
 # ----------------------------------------------------------------------------

@@ -203,11 +203,16 @@ data "cloudinit_config" "ubuntu_node" {
     content      = <<-EOT
       #!/bin/bash
       set -ex
+      export DEBIAN_FRONTEND=noninteractive
+
+      # Kernel headers — Piraeus satellite init-container builds DRBD9 via DKMS
+      apt-get update
+      apt-get install -y linux-headers-virtual
 
       /etc/eks/bootstrap.sh ${module.eks.cluster_name} \
         --b64-cluster-ca ${module.eks.cluster_certificate_authority_data} \
         --apiserver-endpoint ${module.eks.cluster_endpoint} \
-        --kubelet-extra-args "--node-labels=nodegroup=ubuntu --register-with-taints=nodegroup=ubuntu:NoSchedule"
+        --kubelet-extra-args "--node-labels=nodegroup=ubuntu,storage.k8s.io/satellite=yes --register-with-taints=nodegroup=ubuntu:NoSchedule"
     EOT
   }
 }
@@ -274,6 +279,9 @@ spec:
     metadata:
       labels:
         nodegroup: ubuntu
+        # Instructs LinstorCluster to deploy a satellite + CSI Node
+        # No tier=hdd label as node registers as a diskless DRBD client
+        storage.k8s.io/satellite: "yes"
     spec:
       taints:
         - key: nodegroup

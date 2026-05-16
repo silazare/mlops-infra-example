@@ -8,7 +8,7 @@ metadata:
 spec:
   restartPolicy: Never
   nodeSelector:
-    nodegroup: gpu-ubuntu
+    nodegroup: ubuntu-gpu
   tolerations:
     - key: nvidia.com/gpu
       operator: Equal
