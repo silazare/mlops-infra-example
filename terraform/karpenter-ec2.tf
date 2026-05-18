@@ -310,7 +310,7 @@ spec:
           values: ["linux"]
         - key: "karpenter.sh/capacity-type"
           operator: In
-          values: ["spot"]
+          values: ["on-demand"]
 EOF
 
   depends_on = [

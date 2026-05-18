@@ -107,9 +107,9 @@ module "eks" {
       instance_types = ["c5.large"]
       capacity_type  = "ON_DEMAND"
 
-      min_size     = 2
-      max_size     = 2
-      desired_size = 2
+      min_size     = 1
+      max_size     = 1
+      desired_size = 1
 
       ami_type                       = "CUSTOM"
       ami_id                         = nonsensitive(data.aws_ssm_parameter.ubuntu_eks_ami.value)
@@ -131,7 +131,7 @@ module "eks" {
         sdb = {
           device_name = "/dev/sdb"
           ebs = {
-            volume_size           = 128
+            volume_size           = 64
             volume_type           = "gp3"
             encrypted             = true
             delete_on_termination = true
