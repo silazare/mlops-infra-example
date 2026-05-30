@@ -10,6 +10,7 @@ spec:
         selector:
           matchLabels:
             argocd.argoproj.io/secret-type: cluster
+            enable_nvidia_gpu_operator: "true"
   template:
     metadata:
       name: nvidia-gpu-operator

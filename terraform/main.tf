@@ -30,4 +30,16 @@ locals {
     "jupyterlab-llm",
     "jupyterlab-llm-cache",
   ]
+
+  # Core layer addons
+  # Set to false to skip an addon deployment on the cluster.
+  enabled_addons = {
+    monitoring          = false # alloy + mimir + grafana + loki
+    linstor             = false # piraeus-operator + linstor-cluster
+    alb_controller      = true
+    traefik             = true
+    nvidia_gpu_operator = false
+    metrics_server      = true
+    kube_state_metrics  = true
+  }
 }

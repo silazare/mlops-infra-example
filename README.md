@@ -18,6 +18,10 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] JupyterLab (CUDA/LLM) — image built in-cluster via BuildKit Job, deploy via manual-sync Argo Application
 
+### Core Addons toggle
+Each core component is gated by an `enable_<addon>` flag in [terraform/main.tf](terraform/main.tf).
+Flags are published as labels on the ArgoCD cluster Secret; each ApplicationSet in [argocd/applications/core/](argocd/applications/core/) filters on its own label. Set a value to `false` and Argo prunes the addon.
+
 
 ## Deployment
 

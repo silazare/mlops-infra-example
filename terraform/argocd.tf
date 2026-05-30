@@ -75,9 +75,11 @@ resource "kubernetes_secret_v1" "argocd_in_cluster" {
   metadata {
     name      = "in-cluster"
     namespace = "argocd"
-    labels = {
-      "argocd.argoproj.io/secret-type" = "cluster"
-    }
+    labels = merge(
+      { "argocd.argoproj.io/secret-type" = "cluster" },
+      # Core layer addon toggles sourced from local.enabled_addons
+      { for k, v in local.enabled_addons : "enable_${k}" => tostring(v) },
+    )
     annotations = {
       cluster_name    = module.eks.cluster_name
       region          = local.region

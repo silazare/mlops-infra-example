@@ -23,7 +23,7 @@ Two foundational k8s resources are deliberately on the TF side:
 
 ```
 terraform/                        # cluster-layer
-  main.tf                         # locals (cluster name `mltest`, region, ECR repo list, chart versions, target_revision)
+  main.tf                         # locals (cluster name `mltest`, region, ECR repo list, chart versions, target_revision, `enabled_addons` map)
   versions.tf                     # provider + Terraform version pins (incl. hashicorp/cloudinit for Ubuntu userData)
   providers.tf                    # aws, helm, kubectl, kubernetes (all with exec auth) + cloudinit
   vpc.tf                          # VPC module + Traefik external/node SGs
@@ -114,6 +114,20 @@ Terraform writes a `kubernetes_secret` named `in-cluster` in the `argocd` namesp
 | `mimir_ruler_bucket` | `aws_s3_bucket.mimir_ruler.id` | mimir |
 
 IAM role ARNs are **not** published as annotations — Pod Identity associations (see [iam.tf](terraform/iam.tf), [iam-mimir.tf](terraform/iam-mimir.tf), and the EBS CSI inline `pod_identity_association` in [eks.tf](terraform/eks.tf)) wire SAs to IAM roles at the AWS API level, so Helm values never need the role ARN.
+
+The same Secret also carries **addon toggle labels** sourced from `local.enabled_addons` ([main.tf](terraform/main.tf)) via `{ for k, v in local.enabled_addons : "enable_${k}" => tostring(v) }`. Each core ApplicationSet adds the matching key to its `clusters.selector.matchLabels` — flip a value to `false` (or remove the key) and the ApplicationSet stops matching this cluster, so Argo prunes the child Application:
+
+| Label | Controls | ApplicationSets |
+|---|---|---|
+| `enable_monitoring` | metrics + logs stack | alloy, mimir, grafana, grafana-loki |
+| `enable_linstor` | persistent-storage stack | piraeus-operator, linstor-cluster |
+| `enable_alb_controller` | NLB provisioner for Traefik | alb-controller |
+| `enable_traefik` | ingress | traefik |
+| `enable_nvidia_gpu_operator` | GPU driver + device-plugin | nvidia-gpu-operator |
+| `enable_metrics_server` | HPA / `kubectl top` metrics | metrics-server |
+| `enable_kube_state_metrics` | k8s state metrics for Mimir | kube-state-metrics |
+
+Flag-key in `enabled_addons` must match the `matchLabels` suffix (without the `enable_` prefix) — this is the only implicit contract between TF and the GitOps repo. Disabling `enable_linstor` or `enable_monitoring` removes stateful workloads with PVCs (Loki filesystem, Mimir cache, LINSTOR resources under `Retain` policy) — orphan PVs and LINSTOR resource-definitions stay behind, clean manually. Disabling `enable_alb_controller` while `enable_traefik` is on leaves the Traefik Service in `<pending>` (no NLB provisioner).
 
 ApplicationSets in `argocd/applications/{core,mlops}/` use a `clusters` generator that matches this Secret. Helm-based Applications pull static values from `argocd/helm-values/<app>/values.yaml` via a multi-source `$values` ref; cluster-specific bits are interpolated inline via the `helm.values: |` block.
 
