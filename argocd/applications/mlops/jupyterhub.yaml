@@ -32,9 +32,16 @@ spec:
       destination:
         server: "{{server}}"
         namespace: jupyterhub
-      # The chart auto-generates secret tokens via randAlphaNum on each render
+      # The chart auto-generates 3 secret tokens into Secret `hub` via randAlphaNum on each render
       # The hub/proxy pod-template checksum annotations drift every sync
       ignoreDifferences:
+        - kind: Secret
+          name: hub
+          namespace: jupyterhub
+          jsonPointers:
+            - /data/hub.config.ConfigurableHTTPProxy.auth_token
+            - /data/hub.config.JupyterHub.cookie_secret
+            - /data/hub.config.CryptKeeper.keys
         - group: apps
           kind: Deployment
           name: hub
