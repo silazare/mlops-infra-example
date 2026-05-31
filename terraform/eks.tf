@@ -107,9 +107,9 @@ module "eks" {
       instance_types = ["c5.large"]
       capacity_type  = "ON_DEMAND"
 
-      min_size     = 1
+      min_size     = 0
       max_size     = 1
-      desired_size = 1
+      desired_size = 0
 
       ami_type                       = "CUSTOM"
       ami_id                         = nonsensitive(data.aws_ssm_parameter.ubuntu_eks_ami.value)
