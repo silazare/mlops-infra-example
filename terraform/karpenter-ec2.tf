@@ -298,7 +298,7 @@ spec:
           values: ["t"]
         - key: "karpenter.k8s.aws/instance-cpu"
           operator: In
-          values: ["2", "4"]
+          values: ["4", "8"]
         - key: "karpenter.k8s.aws/instance-generation"
           operator: Gt
           values: ["2"]
