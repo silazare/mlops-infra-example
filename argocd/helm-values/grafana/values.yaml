@@ -3,7 +3,7 @@
 
 # Admin credentials — non-production
 adminUser: admin
-adminPassword: admin123!
+adminPassword: admin123! # CHANGEME!
 
 service:
   type: ClusterIP

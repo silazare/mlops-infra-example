@@ -1,0 +1,172 @@
+---
+# JupyterHub control plane (spawns/proxies user servers)
+hub:
+  # Hub state DB.
+  # Single DB for non-production.
+  db:
+    type: sqlite-pvc
+    pvc:
+      storageClassName: gp3
+      storage: 1Gi
+  # Pin Hub to the ubuntu Karpenter pool (label) + tolerate its taint.
+  nodeSelector:
+    nodegroup: ubuntu
+  tolerations:
+    - key: nodegroup
+      operator: Equal
+      value: ubuntu
+      effect: NoSchedule
+  # Small footprint for testing
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  # Auth and user management — non-production
+  # How to manage users:
+  #   allowed_users : who may log in at all (the "user slicing"). Add/remove here.
+  #   admin_users   : subset with the admin panel (start/stop others' servers).
+  config:
+    JupyterHub:
+      authenticator_class: dummy
+    DummyAuthenticator:
+      password: "admin123!" # CHANGEME!
+    Authenticator:
+      admin_users:
+        - i.ivanov
+      allowed_users:
+        - i.ivanov
+        - p.petrov
+
+# Configurable-http-proxy routing traffic to Hub + user pods
+proxy:
+  # ClusterIP — Traefik Ingress fronts it
+  service:
+    type: ClusterIP
+  chp:
+    nodeSelector:
+      nodegroup: ubuntu
+    tolerations:
+      - key: nodegroup
+        operator: Equal
+        value: ubuntu
+        effect: NoSchedule
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+# Per-user notebook server pods (KubeSpawner template)
+singleuser:
+  # Modern UI: JupyterLab on the jupyter_server backend.
+  defaultUrl: /lab
+  extraEnv:
+    JUPYTERHUB_SINGLEUSER_APP: "jupyter_server.serverapp.ServerApp"
+  # Pin user pods to the ubuntu pool and tolerate its taint
+  nodeSelector:
+    nodegroup: ubuntu
+  extraTolerations:
+    - key: nodegroup
+      operator: Equal
+      value: ubuntu
+      effect: NoSchedule
+  # Persistent home dir per user — dynamic gp3 PVC, one per user, mounted at /home/jovyan.
+  storage:
+    type: dynamic
+    capacity: 10Gi
+    dynamic:
+      storageClass: gp3
+      pvcNameTemplate: claim-{username}{servername}
+      volumeNameTemplate: volume-{username}{servername}
+    homeMountPath: /home/jovyan
+  # Resource guarantees (requests) and limits. guarantee==request, limit caps burst.
+  cpu:
+    guarantee: 0.25
+    limit: 1
+  memory:
+    guarantee: 1G
+    limit: 2G
+  # Default notebook image
+  image:
+    name: quay.io/jupyter/minimal-notebook
+    tag: "2024-10-14"
+  # Give the spawn a generous timeout first pull on a fresh Karpenter node is slow.
+  startTimeout: 600
+
+# Scheduling — cost/packing optimisations
+scheduling:
+  # Dedicated scheduler packs user pods tightly onto fewer nodes
+  userScheduler:
+    enabled: true
+    # Chart default is 2 (HA leader-election)
+    replicas: 1
+    nodeSelector:
+      nodegroup: ubuntu
+    tolerations:
+      - key: nodegroup
+        operator: Equal
+        value: ubuntu
+        effect: NoSchedule
+  # Priority so user pods can preempt placeholders
+  podPriority:
+    enabled: true
+  # Warm "placeholder" pods hold spare capacity so a real user spawn doesn't wait
+  # for a cold Karpenter node. Each placeholder is evicted when a user needs the room.
+  # Keep at 1 in sandbox (0 = no warm capacity, pure on-demand scale-up).
+  userPlaceholder:
+    enabled: true
+    replicas: 1
+  # corePods → hub/proxy/scheduler ; userPods → singleuser/placeholder.
+  corePods:
+    tolerations:
+      - key: nodegroup
+        operator: Equal
+        value: ubuntu
+        effect: NoSchedule
+    nodeAffinity:
+      matchNodePurpose: prefer
+  userPods:
+    tolerations:
+      - key: nodegroup
+        operator: Equal
+        value: ubuntu
+        effect: NoSchedule
+    nodeAffinity:
+      matchNodePurpose: prefer
+
+# Cull — reclaim idle user servers
+cull:
+  enabled: true
+  timeout: 3600      # cull a server idle for 1h
+  every: 300         # check every 5m
+  maxAge: 0          # 0 = no hard max lifetime, only idleness
+  # users: false     # set true to also delete idle *users* (needs admin:users role)
+
+# prePuller — pre-pull the singleuser image so spawns are fast
+prePuller:
+  # Pull on each chart upgrade via a pre-upgrade hook.
+  hook:
+    enabled: true
+    nodeSelector:
+      nodegroup: ubuntu
+    tolerations:
+      - key: nodegroup
+        operator: Equal
+        value: ubuntu
+        effect: NoSchedule
+  # Continuous puller (DaemonSet) keeps the image warm on every ubuntu node.
+  continuous:
+    enabled: true
+
+# Ingress
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  hosts:
+    - jupyter.local
+  pathType: Prefix
+  tls: []

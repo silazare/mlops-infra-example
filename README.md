@@ -17,6 +17,7 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] JupyterLab (CUDA/LLM) — image built in-cluster via BuildKit Job, deploy via manual-sync Argo Application
+- [x] JupyterHub — multi-user Jupyterhub
 
 ### Core Addons toggle
 Each core component is gated by an `enable_<addon>` flag in [terraform/main.tf](terraform/main.tf).
@@ -59,7 +60,7 @@ k -n traefik get svc traefik \
 Pick any one of the returned IPs and add:
 
 ```shell
-<IP>  argocd.local grafana.local
+<IP>  argocd.local grafana.local jupyter.local
 ```
 
 ### 4. Retrieve ArgoCD admin password
@@ -151,3 +152,46 @@ k -n piraeus-datastore exec deploy/linstor-controller -- linstor resource list
 k -n piraeus-datastore get pod -l app.kubernetes.io/component=linstor-satellite -o wide
 k -n piraeus-datastore exec <satellite-pod> -- drbdadm status
 ```
+
+## JupyterHub deployment
+
+Sandbox for multi-user JupyterHub via the [zero-to-jupyterhub (z2jh)](https://z2jh.jupyter.org/) chart
+
+| Component | What it is | Deploys |
+|---|---|---|
+| `hub` | JupyterHub control plane — auth + per-user pod spawning (KubeSpawner) | `hub` Deployment + state DB on `gp3` |
+| `proxy` | `configurable-http-proxy` — routes `/hub` and `/user/<name>` traffic | `proxy` Deployment + `proxy-public` Service (ClusterIP) |
+| `singleuser` | Template for each user's notebook server (JupyterLab UI, `jupyter_server` backend) | Per-user pod + dynamic 10Gi `gp3` PVC, spawned on first login |
+| `scheduling` | Cost/packing: dedicated scheduler, pod priority, warm placeholders | `user-scheduler` Deployment, `PriorityClass`, `user-placeholder` pods |
+| `cull` | Idle-culler — stops servers idle >1h so Karpenter scales in | culler service inside the hub (no separate pod) |
+| `prePuller` | Pre-pulls the singleuser image so spawns are fast | pre-upgrade Job (`hook`) + continuous DaemonSet on `ubuntu` nodes |
+
+User management — edit the lists in `hub.config.Authenticator`, then `helm upgrade`:
+- `allowed_users` — who may log in (the user slicing); `admin_users` — subset with the admin panel.
+- Usernames must be DNS-safe (lowercase) — they become the PVC name `claim-<username>` and the `/home/jovyan` owner.
+
+### Access
+
+All users share the single host — routing is path-based inside the proxy (CHP), not per-user ingress:
+- Log in at `jupyter.local` > redirected to `/user/<username>/lab` (that user's own pod).
+- Admins reach other users' servers via `/hub/admin` > **Access Server**
+
+### PV lifecycle
+
+Each user gets one PVC `claim-<username>` (template `claim-{username}{servername}`), backed by a 10Gi `gp3` volume mounted at `/home/jovyan`. The Hub never deletes a PVC — server shutdown detaches the volume but keeps the data:
+
+```
+login            → Hub creates PVC claim-<username> > CSI creates PV (real disk)
+                 → PV mounted into the pod as /home/jovyan
+server shutdown  → pod deleted, PV detached
+                 → PVC + PV REMAIN (data lives on)
+re-login         → Hub sees the existing PVC > mounts the same PV
+```
+
+### Offboarding a user
+
+Two independent flows — access vs data.
+
+1. **Revoke access** (safe, instant) — remove from `allowed_users`/`admin_users`, then `helm upgrade`. PVC stays, data intact.
+2. **Stop a running server** — admin UI `/hub/admin` > **Stop**, or `k -n jupyterhub delete pod jupyter-<username>` (pod only, leaves the PVC).
+3. **Handle data — back up BEFORE deleting.**
