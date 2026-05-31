@@ -28,10 +28,13 @@ hub:
     limits:
       memory: 512Mi
 
-  # Auth and user management — non-production
-  # How to manage users:
-  #   allowed_users : who may log in at all (the "user slicing"). Add/remove here.
-  #   admin_users   : subset with the admin panel (start/stop others' servers).
+  # ---------------------------------------------------------------------------
+  # AUTH — two modes. ACTIVE NOW = DummyAuthenticator (prototype, no real auth).
+  # PROD = Keycloak OIDC (block below). To switch: comment the Dummy block,
+  # uncomment the GenericOAuthenticator block + the hub.extraEnv block.
+  # ---------------------------------------------------------------------------
+  # --- MODE A: prototype (current) -------------------------------------------
+  #   allowed_users : who may log in (the "user slicing"); admin_users : admin panel.
   config:
     JupyterHub:
       authenticator_class: dummy
@@ -43,6 +46,42 @@ hub:
       allowed_users:
         - i.ivanov
         - p.petrov
+
+    # --- MODE B: Keycloak OIDC (prod) — uncomment, remove the Dummy block above -
+    # JupyterHub:
+    #   authenticator_class: generic-oauth   # GenericOAuthenticator from oauthenticator
+    # GenericOAuthenticator:
+    #   login_service: "Keycloak"            # button label on the login page
+    #   # client_id / client_secret / callback / endpoint URLs come from env (see
+    #   # hub.extraEnv below) — oauthenticator reads OAUTH_* / OAUTH2_* automatically,
+    #   # so NO secret is ever written into this file / git.
+    #   username_claim: preferred_username   # stable; becomes the PVC name claim-<user>.
+    #                                        # do NOT use a claim that changes in KC.
+    #   scope: ["openid", "profile", "groups"]  # KC must emit a `groups` claim (group mapper)
+    #   enable_auth_state: true              # store the OIDC token in the hub DB
+    #                                        # (needed for token pass-through + manage_groups;
+    #                                        #  z2jh supplies the crypt key via Secret `hub`)
+    #   # ---- authorization: by Keycloak GROUP, not static lists ----
+    #   allow_all: false                     # fail-closed: only the groups below may log in
+    #   manage_groups: true                  # sync group membership from the token
+    #   auth_state_groups_key: "oauth_user.groups"  # where groups live in the userinfo response
+    #   allowed_groups: ["jupyterhub-users"]   # KC group → may log in
+    #   admin_groups:   ["jupyterhub-admins"]  # KC group → gets the admin panel
+    #   # bootstrap first admin without a password: either put yourself in the KC
+    #   # `jupyterhub-admins` group, or seed once: admin_users: ["<your-kc-username>"]
+
+  # --- MODE B cont.: inject OIDC creds + endpoints from a k8s Secret -----------
+  # Create Secret `jupyterhub-oidc` via SealedSecrets / External Secrets / Vault —
+  # NEVER a plaintext Secret in git. Keys: client-id, client-secret.
+  # extraEnv:
+  #   OAUTH_CLIENT_ID:
+  #     valueFrom: { secretKeyRef: { name: jupyterhub-oidc, key: client-id } }
+  #   OAUTH_CLIENT_SECRET:
+  #     valueFrom: { secretKeyRef: { name: jupyterhub-oidc, key: client-secret } }
+  #   OAUTH_CALLBACK_URL:   "https://jupyter.example.com/hub/oauth_callback"
+  #   OAUTH2_AUTHORIZE_URL: "https://kc.example.com/realms/REALM/protocol/openid-connect/auth"
+  #   OAUTH2_TOKEN_URL:     "https://kc.example.com/realms/REALM/protocol/openid-connect/token"
+  #   OAUTH2_USERDATA_URL:  "https://kc.example.com/realms/REALM/protocol/openid-connect/userinfo"
 
 # Configurable-http-proxy routing traffic to Hub + user pods
 proxy:
