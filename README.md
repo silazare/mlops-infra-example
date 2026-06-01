@@ -94,6 +94,9 @@ for kind in applications applicationsets; do
   done
 done
 
+# deleted Karpenter CRD to fix terraform destroy stuck
+terraform state rm helm_release.karpenter_crd
+
 terraform destroy
 ```
 
