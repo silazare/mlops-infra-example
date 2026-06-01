@@ -38,7 +38,7 @@ locals {
     linstor             = false # piraeus-operator + linstor-cluster
     alb_controller      = true
     traefik             = true
-    nvidia_gpu_operator = false
+    nvidia_gpu_operator = true
     metrics_server      = true
     kube_state_metrics  = true
     # mlops layer addons

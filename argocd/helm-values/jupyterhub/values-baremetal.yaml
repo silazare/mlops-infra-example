@@ -29,59 +29,93 @@ hub:
       memory: 512Mi
 
   # ---------------------------------------------------------------------------
-  # AUTH — two modes. ACTIVE NOW = DummyAuthenticator (prototype, no real auth).
-  # PROD = Keycloak OIDC (block below). To switch: comment the Dummy block,
-  # uncomment the GenericOAuthenticator block + the hub.extraEnv block.
+  # AUTH — Keycloak OIDC for authN; authZ (who logs in / who is admin) is by the
+  # username lists below, managed here in git — no KC groups/attributes needed.
   # ---------------------------------------------------------------------------
-  # --- MODE A: prototype (current) -------------------------------------------
-  #   allowed_users : who may log in (the "user slicing"); admin_users : admin panel.
   config:
     JupyterHub:
-      authenticator_class: dummy
-    DummyAuthenticator:
-      password: "admin123!" # CHANGEME!
+      authenticator_class: generic-oauth
+    GenericOAuthenticator:
+      login_service: "Keycloak"              # label on the login button
+      # client_id / client_secret / callback / endpoint URLs come from hub.extraEnv
+      # below (oauthenticator reads OAUTH_* / OAUTH2_*), so no secret lands in git.
+      username_claim: preferred_username     # stable; becomes the PVC name claim-<user>
+      scope: ["openid", "profile"]           # no groups claim required
+      enable_auth_state: true                # store the OIDC token in the hub DB
     Authenticator:
+      allow_all: false                       # fail-closed: only allowed_users below
       admin_users:
         - i.ivanov
       allowed_users:
         - i.ivanov
         - p.petrov
 
-    # --- MODE B: Keycloak OIDC (prod) — uncomment, remove the Dummy block above -
-    # JupyterHub:
-    #   authenticator_class: generic-oauth   # GenericOAuthenticator from oauthenticator
-    # GenericOAuthenticator:
-    #   login_service: "Keycloak"            # button label on the login page
-    #   # client_id / client_secret / callback / endpoint URLs come from env (see
-    #   # hub.extraEnv below) — oauthenticator reads OAUTH_* / OAUTH2_* automatically,
-    #   # so NO secret is ever written into this file / git.
-    #   username_claim: preferred_username   # stable; becomes the PVC name claim-<user>.
-    #                                        # do NOT use a claim that changes in KC.
-    #   scope: ["openid", "profile", "groups"]  # KC must emit a `groups` claim (group mapper)
-    #   enable_auth_state: true              # store the OIDC token in the hub DB
-    #                                        # (needed for token pass-through + manage_groups;
-    #                                        #  z2jh supplies the crypt key via Secret `hub`)
-    #   # ---- authorization: by Keycloak GROUP, not static lists ----
-    #   allow_all: false                     # fail-closed: only the groups below may log in
-    #   manage_groups: true                  # sync group membership from the token
-    #   auth_state_groups_key: "oauth_user.groups"  # where groups live in the userinfo response
-    #   allowed_groups: ["jupyterhub-users"]   # KC group → may log in
-    #   admin_groups:   ["jupyterhub-admins"]  # KC group → gets the admin panel
-    #   # bootstrap first admin without a password: either put yourself in the KC
-    #   # `jupyterhub-admins` group, or seed once: admin_users: ["<your-kc-username>"]
+  # OIDC creds + endpoints from a k8s Secret (SealedSecrets / External Secrets / Vault
+  # — never a plaintext Secret in git). Keys: client-id, client-secret.
+  extraEnv:
+    OAUTH_CLIENT_ID:
+      valueFrom: { secretKeyRef: { name: jupyterhub-oidc, key: client-id } }
+    OAUTH_CLIENT_SECRET:
+      valueFrom: { secretKeyRef: { name: jupyterhub-oidc, key: client-secret } }
+    OAUTH_CALLBACK_URL:   "https://jupyter.example.com/hub/oauth_callback"
+    OAUTH2_AUTHORIZE_URL: "https://kc.example.com/realms/REALM/protocol/openid-connect/auth"
+    OAUTH2_TOKEN_URL:     "https://kc.example.com/realms/REALM/protocol/openid-connect/token"
+    OAUTH2_USERDATA_URL:  "https://kc.example.com/realms/REALM/protocol/openid-connect/userinfo"
 
-  # --- MODE B cont.: inject OIDC creds + endpoints from a k8s Secret -----------
-  # Create Secret `jupyterhub-oidc` via SealedSecrets / External Secrets / Vault —
-  # NEVER a plaintext Secret in git. Keys: client-id, client-secret.
-  # extraEnv:
-  #   OAUTH_CLIENT_ID:
-  #     valueFrom: { secretKeyRef: { name: jupyterhub-oidc, key: client-id } }
-  #   OAUTH_CLIENT_SECRET:
-  #     valueFrom: { secretKeyRef: { name: jupyterhub-oidc, key: client-secret } }
-  #   OAUTH_CALLBACK_URL:   "https://jupyter.example.com/hub/oauth_callback"
-  #   OAUTH2_AUTHORIZE_URL: "https://kc.example.com/realms/REALM/protocol/openid-connect/auth"
-  #   OAUTH2_TOKEN_URL:     "https://kc.example.com/realms/REALM/protocol/openid-connect/token"
-  #   OAUTH2_USERDATA_URL:  "https://kc.example.com/realms/REALM/protocol/openid-connect/userinfo"
+  # ---------------------------------------------------------------------------
+  # Per-user slicing — all keyed on username, managed here in git (no KC needed).
+  # `profiles` = which compute tiers a user sees; `quota` = that user's disk size.
+  # Compute (CPU/mem/GPU/image) lives in the profile, disk lives in the quota hook —
+  # so the two are managed independently per user.
+  # ---------------------------------------------------------------------------
+  extraConfig:
+    # PROFILES — menu shown at spawn. SMALL for everyone; LARGE/GPU only for POWER
+    # usernames. GPU needs the NVIDIA GPU Operator (else nvidia.com/gpu = Pending)
+    # and a CUDA image (minimal won't use the GPU).
+    profiles: |
+      SMALL = {
+          "display_name": "Small — 1 CPU / 2G",
+          "default": True,
+          "kubespawner_override": {"cpu_guarantee": 0.5, "cpu_limit": 1,
+                                   "mem_guarantee": "2G", "mem_limit": "2G"},
+      }
+      LARGE = {
+          "display_name": "Large — 8 CPU / 32G",
+          "kubespawner_override": {"cpu_guarantee": 2, "cpu_limit": 8,
+                                   "mem_guarantee": "16G", "mem_limit": "32G"},
+      }
+      GPU = {
+          "display_name": "GPU — 1 GPU / 8 CPU / 64G",
+          "kubespawner_override": {
+              "node_selector": {"nodegroup": "gpu"},        # your GPU node label
+              "tolerations": [{"key": "nvidia.com/gpu", "operator": "Equal",
+                               "value": "true", "effect": "NoSchedule"}],
+              "extra_resource_limits": {"nvidia.com/gpu": "1"},
+              "cpu_guarantee": 2, "cpu_limit": 8,
+              "mem_guarantee": "32G", "mem_limit": "64G",
+              "image": "<registry>/jupyterlab-cuda:<tag>",  # CUDA image
+              "start_timeout": 1200,
+          },
+      }
+      PROFILES = {                       # username → profiles they may pick
+          "i.ivanov": [SMALL, LARGE, GPU],
+          "p.petrov": [SMALL],
+      }
+      def dynamic_profiles(spawner):
+          return PROFILES.get(spawner.user.name, [SMALL])   # default: SMALL only
+      c.KubeSpawner.profile_list = dynamic_profiles
+
+    # QUOTA — per-user PVC size. Runs after profile pick, overrides storage_capacity.
+    # Size is set at PVC CREATION only; raising it later won't grow an existing
+    # claim-<user> (expand by hand if the CSI allows; shrink never).
+    quota: |
+      QUOTA = {                          # username → disk size
+          "i.ivanov": "100Gi",
+          "p.petrov": "10Gi",
+      }
+      def pre_spawn(spawner):
+          spawner.storage_capacity = QUOTA.get(spawner.user.name, "10Gi")
+      c.KubeSpawner.pre_spawn_hook = pre_spawn
 
 # Configurable-http-proxy routing traffic to Hub + user pods
 proxy:

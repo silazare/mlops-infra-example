@@ -39,6 +39,19 @@ hub:
       allowed_users:
         - i.ivanov
         - p.petrov
+  # Per-USER disk quota — profiles are per-spawn/per-group, this is per-username.
+  # pre_spawn_hook runs after profile selection and overrides storage_capacity, so two
+  # users in the same group get different PVC sizes. Applies AT PVC CREATION only — an
+  # existing claim-<user> won't auto-grow if you raise the quota later (resize gp3 by hand).
+  extraConfig:
+    quota: |
+      QUOTA = {            # username → PVC size
+          "i.ivanov": "100Gi",
+          "p.petrov": "10Gi",
+      }
+      def pre_spawn(spawner):
+          spawner.storage_capacity = QUOTA.get(spawner.user.name, "10Gi")  # default for the rest
+      c.KubeSpawner.pre_spawn_hook = pre_spawn
 
 # Configurable-http-proxy routing traffic to Hub + user pods
 proxy:
@@ -96,6 +109,49 @@ singleuser:
     tag: "2024-10-14"
   # Give the spawn a generous timeout first pull on a fresh Karpenter node is slow.
   startTimeout: 600
+  # Profiles — user picks one at spawn, kubespawner_override beats the defaults above
+  profileList:
+    - display_name: "Small — 1 CPU / 2G / 10Gi"
+      description: "Default. Light notebooks."
+      default: true
+      kubespawner_override:
+        cpu_guarantee: 0.25
+        cpu_limit: 1
+        mem_guarantee: 1G
+        mem_limit: 2G
+        storage_capacity: 10Gi
+        storage_class: gp3
+    - display_name: "Large — 4 CPU / 16G / 100Gi"
+      description: "Heavier workloads / bigger datasets."
+      kubespawner_override:
+        cpu_guarantee: 1
+        cpu_limit: 4
+        mem_guarantee: 8G
+        mem_limit: 16G
+        storage_capacity: 100Gi
+        storage_class: gp3
+        image: "quay.io/jupyter/scipy-notebook:2024-10-14"
+    # GPU tier on the gpu-ubuntu Karpenter pool
+    - display_name: "GPU — 1×A10G / 8 CPU / 32G"
+      description: "CUDA notebook on a GPU node."
+      kubespawner_override:
+        node_selector:
+          nodegroup: gpu-ubuntu
+        tolerations:
+          - key: nvidia.com/gpu
+            operator: Equal
+            value: "true"
+            effect: NoSchedule
+        extra_resource_limits:
+          nvidia.com/gpu: "1"
+        cpu_guarantee: 2
+        cpu_limit: 8
+        mem_guarantee: 16G
+        mem_limit: 32G
+        storage_capacity: 100Gi
+        storage_class: gp3
+        image: "576087096890.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:25.01"
+        start_timeout: 1200   # GPU node spin-up + large CUDA image pull
 
 # Scheduling — cost/packing optimisations
 scheduling:
