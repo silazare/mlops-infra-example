@@ -11,8 +11,6 @@ spec:
     spec:
       serviceAccountName: buildkit
       restartPolicy: Never
-      nodeSelector:
-        nodegroup: default
       initContainers:
         - name: git-clone
           image: alpine/git:v2.52.0
