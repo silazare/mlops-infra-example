@@ -109,30 +109,26 @@ singleuser:
     tag: "2024-10-14"
   # Give the spawn a generous timeout first pull on a fresh Karpenter node is slow.
   startTimeout: 600
-  # Profiles — user picks one at spawn, kubespawner_override beats the defaults above
+  # Profiles list
   profileList:
-    - display_name: "Small — 1 CPU / 2G / 10Gi"
-      description: "Default. Light notebooks."
+    - display_name: "Small"
+      description: "Light notebooks."
       default: true
       kubespawner_override:
         cpu_guarantee: 0.25
         cpu_limit: 1
         mem_guarantee: 1G
         mem_limit: 2G
-        storage_capacity: 10Gi
-        storage_class: gp3
-    - display_name: "Large — 4 CPU / 16G / 100Gi"
-      description: "Heavier workloads / bigger datasets."
+    - display_name: "Large"
+      description: "Heavier workloads."
       kubespawner_override:
         cpu_guarantee: 1
         cpu_limit: 4
         mem_guarantee: 8G
         mem_limit: 16G
-        storage_capacity: 100Gi
-        storage_class: gp3
         image: "quay.io/jupyter/scipy-notebook:2024-10-14"
     # GPU tier on the gpu-ubuntu Karpenter pool
-    - display_name: "GPU — 1×A10G / 8 CPU / 32G"
+    - display_name: "GPU"
       description: "CUDA notebook on a GPU node."
       kubespawner_override:
         node_selector:
@@ -148,8 +144,6 @@ singleuser:
         cpu_limit: 8
         mem_guarantee: 16G
         mem_limit: 32G
-        storage_capacity: 100Gi
-        storage_class: gp3
         image: "576087096890.dkr.ecr.eu-west-1.amazonaws.com/jupyterlab-llm:25.01"
         start_timeout: 1200   # GPU node spin-up + large CUDA image pull
 
