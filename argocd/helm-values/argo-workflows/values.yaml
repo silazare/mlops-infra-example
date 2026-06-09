@@ -1,0 +1,148 @@
+---
+# Test deploy: helm only, no Ingress, client-auth via SA token, port-forward access.
+# Migration path to prod documented in CLAUDE.md.
+
+# Minified CRDs as chart templates (no pre-install Job / no network).
+crds:
+  install: true
+  keep: true
+  full: false
+
+# Cluster-scoped controller. Argo in ns `argo`, workflows in `mlops-pipelines`.
+singleNamespace: false
+
+# Common tag for all images
+images:
+  tag: v4.0.5
+  pullPolicy: IfNotPresent
+
+controller:
+  replicas: 1
+  workflowNamespaces:
+    - mlops-pipelines
+  parallelism: 5
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  # Metrics endpoint
+  metricsConfig:
+    enabled: true
+  serviceMonitor:
+    enabled: false
+  # Defaults for every workflow: non-root step pods + auto-cleanup.
+  workflowDefaults:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      ttlStrategy:
+        secondsAfterCompletion: 86400
+        secondsAfterSuccess: 3600
+        secondsAfterFailure: 259200
+      podGC:
+        strategy: OnWorkflowSuccess
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+
+executor:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+  securityContext:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+
+# Default securityContext for main container in step pods
+mainContainer:
+  securityContext:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: false
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+
+server:
+  enabled: true
+  replicas: 1
+  servicePort: 2746
+  serviceType: ClusterIP
+  # client mode: log in to UI with an SA bearer token (see extraObjects)
+  authModes:
+    - client
+  secure: false
+  ingress:
+    enabled: false
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: false
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+
+workflow:
+  serviceAccount:
+    create: true
+    name: argo-workflow
+  rbac:
+    create: true
+
+useStaticCredentials: true
+
+# UI login SA + long-lived token. ClusterRoleBinding so the UI sees all namespaces.
+extraObjects:
+  - apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: argo-ui
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: argo-ui-admin
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: argo-workflows-admin
+    subjects:
+      - kind: ServiceAccount
+        name: argo-ui
+        namespace: argo
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: argo-ui.service-account-token
+      annotations:
+        kubernetes.io/service-account.name: argo-ui
+    type: kubernetes.io/service-account-token
