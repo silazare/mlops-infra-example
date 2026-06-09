@@ -1,0 +1,71 @@
+---
+# Argo Workflows smoke test — cross-namespace ordered Helm deploy
+#
+# Submit:   argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml
+#
+# Verify:   helm -n mlops-pipelines list
+#           kubectl -n mlops-pipelines get deploy,svc | grep podinfo
+#
+# Teardown: argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml -p action=uninstall
+#       or  helm -n mlops-pipelines uninstall podinfo-app podinfo-base
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: helm-deploy-test-
+spec:
+  entrypoint: chain
+  serviceAccountName: argo-workflow
+  arguments:
+    parameters:
+      # install
+      - name: action
+        value: install
+      # target namespace — must have an argo-workflow-helm RoleBinding
+      - name: target-ns
+        value: mlops-pipelines
+  templates:
+    # ---- DAG: base must finish before app (ordered deploy) ----
+    - name: chain
+      dag:
+        tasks:
+          - name: base
+            template: helm
+            arguments:
+              parameters:
+                - { name: release, value: podinfo-base }
+          - name: app
+            dependencies: [base]
+            template: helm
+            arguments:
+              parameters:
+                - { name: release, value: podinfo-app }
+
+    # ---- reusable Helm step ----
+    - name: helm
+      inputs:
+        parameters:
+          - name: release
+      container:
+        image: alpine/helm:3.16.2
+        command: [sh, -ceu]
+        args:
+          - |
+            NS='{{workflow.parameters.target-ns}}'
+            REL='{{inputs.parameters.release}}'
+            if [ '{{workflow.parameters.action}}' = uninstall ]; then
+              helm -n "$NS" uninstall "$REL" --ignore-not-found
+            else
+              helm repo add podinfo https://stefanprodan.github.io/podinfo
+              helm repo update
+              helm upgrade --install "$REL" podinfo/podinfo \
+                -n "$NS" --wait --timeout 3m
+              helm -n "$NS" list
+            fi
+        env:
+          # restricted PSS forces runAsUser 1000 (workflowDefaults) — keep Helm state in /tmp
+          - name: HELM_CACHE_HOME
+            value: /tmp/.helm/cache
+          - name: HELM_CONFIG_HOME
+            value: /tmp/.helm/config
+          - name: HELM_DATA_HOME
+            value: /tmp/.helm/data

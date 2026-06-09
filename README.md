@@ -18,6 +18,7 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] JupyterLab (CUDA/LLM) — image built in-cluster via BuildKit Job, deploy via manual-sync Argo Application
 - [x] JupyterHub — multi-user Jupyterhub
+- [x] Argo Workflows - CI for ML pipelines
 
 ### Core Addons toggle
 Each core component is gated by an `enable_<addon>` flag in [terraform/main.tf](terraform/main.tf).
@@ -60,7 +61,7 @@ k -n traefik get svc traefik \
 Pick any one of the returned IPs and add:
 
 ```shell
-<IP>  argocd.local grafana.local jupyter.local
+<IP>  argocd.local argo-workflows.local grafana.local jupyter.local
 ```
 
 ### 4. Retrieve ArgoCD admin password
@@ -148,7 +149,7 @@ k -n piraeus-datastore exec deploy/linstor-controller -- linstor node list
 k -n piraeus-datastore exec deploy/linstor-controller -- linstor storage-pool list
 
 # Apply any of the test STS and watch the resource list
-k apply -f mlops/hdd2-test-sts.yaml
+k apply -f mlops/linstor/hdd2-test-sts.yaml
 k -n piraeus-datastore exec deploy/linstor-controller -- linstor resource list
 
 # Live DRBD state on a specific satellite
@@ -198,3 +199,41 @@ Two independent flows — access vs data.
 1. **Revoke access** (safe, instant) — remove from `allowed_users`/`admin_users`, then `helm upgrade`. PVC stays, data intact.
 2. **Stop a running server** — admin UI `/hub/admin` > **Stop**, or `k -n jupyterhub delete pod jupyter-<username>` (pod only, leaves the PVC).
 3. **Handle data — back up BEFORE deleting.**
+
+
+## Argo Workflows deployment
+
+Workflow engine for ML pipelines, used as an in-cluster CI that deploys Helm releases in order. Installed via ArgoCD ([argo/argo-workflows](https://github.com/argoproj/argo-helm) chart.
+
+| Component | What it is | Deploys |
+|---|---|---|
+| `controller` | Workflow controller — reconciles `Workflow` CRs into step pods | `controller` Deployment in `argo`, namespaced (`singleNamespace: true`) |
+| `server` | Argo UI + API (`argo-server`), auto `--namespaced` on `argo` | `server` Deployment + ClusterIP `:2746` + Traefik Ingress `argo-workflows.local` |
+| `crds` | Workflow / CronWorkflow / etc. CRDs | minified CRDs as plain chart templates (`crds.full: false` — no pre-install hook Job, no network pull); Application uses `ServerSideApply=true` |
+| `workflow` SA + RBAC | identity step pods run as | SA `argo-workflow` + Role in ns `argo` |
+| `extraObjects` (UI) | UI login identity | SA `argo-ui` + long-lived token Secret + `RoleBinding` to `argo-argo-workflows-admin`, scoped to ns `argo` |
+| `extraObjects` (deploy) | cross-ns Helm deployer | `wf-helm-deployer` ClusterRole + `mlops-pipelines` Namespace + `argo-workflow-helm` RoleBinding (grants the workflow SA Helm rights in the target ns) |
+
+**Architecture:** control-plane and CI workflows both live in `argo`. Pipelines deploy into target namespaces (`mlops-pipelines`) via cross-namespace RBAC, not by running steps there — adding a target is one Namespace + one RoleBinding in `extraObjects`, no controller-scope change.
+
+### Access
+
+UI at `http://argo-workflows.local` (Traefik, HTTP). No SSO — `client` mode, paste an SA bearer token. The UI lands on ns `argo` at login (where the workflows are) — no Forbidden.
+
+```shell
+# Login token, paste WHOLE output (incl. "Bearer ") into the client-auth field
+echo "Bearer $(k -n argo get secret argo-ui.service-account-token \
+  -o jsonpath='{.data.token}' | base64 -d)"
+```
+
+### Smoke test
+
+```shell
+# basic test
+argo submit -n argo --serviceaccount argo-workflow --watch \
+  https://raw.githubusercontent.com/argoproj/argo-workflows/main/examples/hello-world.yaml
+
+# cross-ns Helm deploy
+argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml
+helm -n mlops-pipelines list
+```

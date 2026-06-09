@@ -54,6 +54,7 @@ argocd/applications/              # GitOps — discovered recursively by the roo
   mlops/
     jupyterlab-llm.yaml           # Plain Application (not ApplicationSet) — manual sync, points at argocd/manifests/jupyterlab-llm/
     jupyterhub.yaml               # ApplicationSet, z2jh chart + $values; gated by enable_jupyterhub; auto-sync; ignoreDifferences on hub Secret + hub/proxy checksum annotations
+    argo-workflows.yaml           # ApplicationSet, argo-workflows chart 1.0.14 + $values; gated by enable_argo_workflows; auto-sync; releaseName `argo`; CreateNamespace + ServerSideApply (CRDs)
 
 argocd/helm-values/               # static Helm values pulled via multi-source $values ref
   traefik/values.yaml
@@ -68,7 +69,7 @@ argocd/helm-values/               # static Helm values pulled via multi-source $
   linstor-cluster/values.yaml     # LinstorCluster + LinstorSatelliteConfiguration (hdd-pool on /dev/linstor-data) + StorageClasses (linstor-hdd-1r, linstor-hdd-2r)
   jupyterhub/values.yaml          # z2jh — all pods on karpenter `ubuntu` pool, dynamic gp3 per-user PVCs, DummyAuthenticator placeholder, scheduling/placeholder/prePuller on, Traefik ingress jupyter.local
   jupyterhub/values-baremetal.yaml # bare-metal variant — cloud autoscaling knobs off (userScheduler/podPriority/userPlaceholder/continuous prePuller), commented Keycloak-OIDC skeleton for prod
-  argo-workflows/values.yaml      # Argo Workflows — manual helm test (NOT yet under ArgoCD); client-auth, no ingress, restricted PSS, GC defaults. See "Argo Workflows" section
+  argo-workflows/values.yaml      # Argo Workflows — singleNamespace controller in `argo`; client-auth, Traefik ingress, restricted PSS, GC defaults; extraObjects = UI SA/token + cross-ns Helm-deployer (wf-helm-deployer ClusterRole + mlops-pipelines Namespace + RoleBinding). See "Argo Workflows" section
 
 argocd/manifests/                 # raw manifests slot, Argo applies these directly
   jupyterlab-llm/                 # Namespace + Deployment + PVC + Service for JupyterLab on `gpu-ubuntu` NodePool
@@ -83,6 +84,8 @@ mlops/                            # MLOps workloads — image build sources + sm
   hdd1-test-sts.yaml              # Piraeus smoke test: StatefulSet w/ 1-replica PVC (linstor-hdd-1r), pinned to satellite=yes
   hdd2-test-sts.yaml              # Piraeus smoke test: 2-replica synchronous DRBD (linstor-hdd-2r)
   diskless-test-sts.yaml          # Piraeus smoke test: Pod on karpenter `ubuntu` (no local pool) → diskless DRBD client
+  argo-wf/
+    helm-deploy-test.yaml         # Argo Workflows smoke test: DAG that helm-installs podinfo into mlops-pipelines in order (base→app); runs in `argo` under SA argo-workflow via cross-ns RBAC
 
 PV_PLAN.md                        # Long-form bare-metal storage plan: rationale, public benchmarks, LVM-thin vs ZFS, appendices
 EKS_PV_TEST_PLAN.md               # POC plan on this EKS cluster, phase-by-phase with chaos tests + Phase 2.5 diskless via karpenter
@@ -131,6 +134,7 @@ The same Secret also carries **addon toggle labels** sourced from `local.enabled
 | `enable_metrics_server` | HPA / `kubectl top` metrics | metrics-server |
 | `enable_kube_state_metrics` | k8s state metrics for Mimir | kube-state-metrics |
 | `enable_jupyterhub` | multi-user JupyterHub (z2jh) | jupyterhub (mlops layer, not core) |
+| `enable_argo_workflows` | Argo Workflows CI engine | argo-workflows (mlops layer, not core) |
 
 Flag-key in `enabled_addons` must match the `matchLabels` suffix (without the `enable_` prefix) — this is the only implicit contract between TF and the GitOps repo. Disabling `enable_linstor` or `enable_monitoring` removes stateful workloads with PVCs (Loki filesystem, Mimir cache, LINSTOR resources under `Retain` policy) — orphan PVs and LINSTOR resource-definitions stay behind, clean manually. Disabling `enable_alb_controller` while `enable_traefik` is on leaves the Traefik Service in `<pending>` (no NLB provisioner).
 
@@ -232,24 +236,33 @@ Operational notes baked in from POC chaos tests:
 
 ## Argo Workflows
 
-Workflow engine for ML pipelines. Currently a **manual `helm` test**, not under ArgoCD — values at [argocd/helm-values/argo-workflows/values.yaml](argocd/helm-values/argo-workflows/values.yaml) (kept in the GitOps values dir so the prod move is just adding an Application + `$values` ref). Upstream chart `argo/argo-workflows` (`argoproj.github.io/argo-helm`), images pinned `v4.0.5` via common `images.tag` (public quay.io — works on the internet). Bumped 3.6→4.0 (major): removed `schedule`(→`schedules`)/`podPriority`/`mutex`/`semaphore` in Workflow specs and reduced log levels — none used here; `authModes`/securityContext/RBAC unchanged. v4 makes full CRDs default but we keep `crds.full: false`.
+Workflow engine for ML pipelines, used here as an in-cluster **CI that deploys Helm releases in a defined order**. Deployed via ArgoCD — ApplicationSet at [argocd/applications/mlops/argo-workflows.yaml](argocd/applications/mlops/argo-workflows.yaml), gated by the `enable_argo_workflows` toggle ([main.tf](terraform/main.tf) `enabled_addons`), multi-source (chart + `$values` ref to [argocd/helm-values/argo-workflows/values.yaml](argocd/helm-values/argo-workflows/values.yaml), same pattern as jupyterhub/loki/mimir). Upstream chart `argo/argo-workflows` (`argoproj.github.io/argo-helm`) `1.0.14` / appVersion `v4.0.5`, images pinned via common `images.tag`. The 3.6→4.0 chart bump (major) removed `schedule`(→`schedules`)/`podPriority`/`mutex`/`semaphore` in Workflow specs — none used here. v4 makes full CRDs default but we keep `crds.full: false`.
 
-**Current shape (test):**
-- **CRDs** `crds.full: false` — minified CRDs as plain chart templates. `full: true` would run a pre-install Job that pulls the kubectl image + downloads CRDs from `raw.githubusercontent.com` (kept off — avoids the network dependency; not airgapped here but no reason to).
-- **Scope** `singleNamespace: false` + `controller.workflowNamespaces: [mlops-pipelines]` — cluster-scoped controller (same shape as prod). Argo installed in ns `argo`; workflows run in `mlops-pipelines`. The chart creates SA `argo-workflow` + namespaced Role in each `workflowNamespaces` entry, so those namespaces must exist **before** install.
-- **Auth** `server.authModes: [client]` — no SSO. UI login = paste a ServiceAccount bearer token. `extraObjects` ships SA `argo-ui` + a long-lived token Secret + a **ClusterRoleBinding** to the chart's aggregated `argo-workflows-admin` ClusterRole (cluster-wide so the UI lists workflows across namespaces). `secure: false` (HTTP; no TLS, no gateway).
-- **Access** no Ingress — `kubectl port-forward` only.
-- **Security** restricted-PSS securityContext on every pod set already (controller/server/executor/mainContainer pod+container level) and `controller.workflowDefaults.spec.securityContext` (runAsNonRoot/1000, seccomp RuntimeDefault) for step pods — harmless on EKS, ready for a Kyverno-restricted cluster later. **Caveat:** `workflowDefaults` forces `runAsUser: 1000` on step pods, so workflow images that need root or a different UID must override `spec.securityContext` per-Workflow.
-- **Cleanup** `workflowDefaults.spec.ttlStrategy` (success 1h / any 24h / fail 3d) + `podGC: OnWorkflowSuccess` — completed Workflows and their pods are reaped automatically (the namespace is long-lived, so this keeps it from filling up).
-- **Metrics** `controller.metricsConfig.enabled: true` (endpoint on `:8080/metrics`); `serviceMonitor.enabled: false` — this cluster scrapes via Alloy/Mimir, not prometheus-operator, so no ServiceMonitor CRD. Wire scraping via an Alloy `discovery.kubernetes` target if needed.
-- **Artifacts** not configured — `hello-world` doesn't need them.
+### Architecture: central CI namespace + cross-namespace deploy
 
-**Migration path to prod** (each step is a values edit, no rework — the test shape is already prod-shaped on scope/security):
-1. **GitOps** — add an ApplicationSet at `argocd/applications/mlops/argo-workflows.yaml` (multi-source: chart + `$values` ref to this file, same pattern as jupyterhub/loki/mimir), gated behind an `enable_argo_workflows` toggle label. CRDs are large even minified — set `ServerSideApply=true` in the Application `syncOptions` (same reason as the GPU-operator `ClusterPolicy`).
-2. **Auth** — swap `server.authModes` to `[sso]` and add `server.sso` (Keycloak OIDC): `issuer`/`clientId`/`clientSecret`/`redirectUrl`/`scopes: [groups]`/`rbac.enabled: true`. Drop the `argo-ui` token objects from `extraObjects`. Group→SA mapping via `workflows.argoproj.io/rbac-rule` annotations on SAs. OIDC client secret via External Secrets (this repo has no ESO yet — add it, or SealedSecrets, like the jupyterhub-oidc skeleton).
-3. **Ingress** — `server.ingress.enabled: true` with `ingressClassName: traefik` + a host (e.g. `argo-wf.local`), matching the grafana/jupyterhub pattern. Then `server.secure` stays false (TLS terminated at Traefik/NLB) or flip to true for end-to-end.
-4. **Artifacts** — `artifactRepository.s3` (bucket/endpoint/region) + an ExternalSecret `argo-artifacts` **in each workflow namespace** (the secret is read by the step pods, not the controller) via `extraObjects`. On EKS prefer IRSA/Pod Identity (`useSDKCreds: true`, drop the static keys) and an S3 bucket + Pod Identity role in Terraform, mirroring the Mimir S3 wiring.
-5. **Network** — if Kyverno/NetworkPolicy lands, add a default-deny NetworkPolicy for `mlops-pipelines` (DNS + egress to kube-apiserver + S3 endpoint) via `extraObjects`; the securityContexts are already restricted-compliant.
+The whole control-plane **and** the CI workflows live in one namespace `argo`; pipelines deploy into target namespaces (currently `mlops-pipelines`) via cross-namespace RBAC, **not** by running steps there. This keeps one CI namespace regardless of how many deploy targets exist — adding a target is one RoleBinding, not a new controller scope.
+
+- **Scope** `singleNamespace: true` — namespaced controller. The chart uses Role/RoleBinding (not Cluster*) for controller+server and auto-starts the server with `--namespaced` (scoped to `argo`), minimal cluster-RBAC footprint. `controller.workflowNamespaces` is **ignored** under this mode — workflows always run in the install ns `argo`. (Switch to `singleNamespace: false` + `workflowNamespaces` only if you need genuine multi-tenant workflow execution across namespaces — separate SAs/quotas/policies per ns. Cross-ns *deploy* doesn't need it.)
+- **Cross-ns deploy RBAC** the workflow SA `argo-workflow` (lives in `argo`) gets Helm-deploy rights in each target ns via a reusable **ClusterRole `wf-helm-deployer`** (rule definition only — namespaced objects Helm creates: secrets/configmaps/services/SAs/PVCs + apps/batch/networking/rbac/autoscaling/policy) **RoleBound** per target ns (`argo-workflow-helm` → subject `argo-workflow`@`argo`). RoleBinding→ClusterRole scopes the effect to that one ns — no cluster-wide write. **Helm needs Secrets** (release state lives in target ns when `helm -n <target>`). A chart shipping CRDs / cluster-scoped objects needs a separate ClusterRole+ClusterRoleBinding (cluster-wide — add deliberately).
+- **Target namespace** `mlops-pipelines` is created automatically as an `extraObjects` `Namespace` (no manual `kubectl create ns`). Add a target = add a `Namespace` + a matching `argo-workflow-helm` RoleBinding in `extraObjects`.
+- **Release name** `releaseName: argo` in the ApplicationSet is load-bearing — the chart prefixes its aggregated ClusterRoles as `argo-argo-workflows-{admin,edit,view}`, which the `argo-ui` RoleBinding references by name. Renaming the release breaks that RBAC.
+- **CRDs** `crds.full: false` — minified CRDs as plain chart templates. `full: true` would run a pre-install Job pulling CRDs from `raw.githubusercontent.com` (kept off — no network dep). The Application sets `ServerSideApply=true` (CRDs are large even minified — exceeds the client-side apply annotation limit, same reason as the GPU-operator `ClusterPolicy`).
+- **Auth** `server.authModes: [client]` — no SSO. UI login = paste a ServiceAccount bearer token. `extraObjects` ships SA `argo-ui` + a long-lived token Secret + a **RoleBinding** (not ClusterRoleBinding) to `argo-argo-workflows-admin` scoped to ns `argo`. Since the server is `--namespaced` on `argo` and the workflows live there, the UI lands on `argo` at login and lists them directly — no Forbidden, no namespace switcher, no cluster-wide UI access.
+- **Access** Traefik Ingress `argo-workflows.local` (`server.ingress.enabled: true`, `ingressClassName: traefik`), `secure: false` (HTTP, TLS terminated at Traefik/NLB). `kubectl port-forward svc/argo-argo-workflows-server 2746:2746` as fallback.
+- **Security** restricted-PSS securityContext on every pod (controller/server/executor/mainContainer, pod+container level) + `controller.workflowDefaults.spec.securityContext` (runAsNonRoot/1000, seccomp RuntimeDefault) for step pods. **Caveat:** `workflowDefaults` forces `runAsUser: 1000` on step pods — images needing root or another UID must override `spec.securityContext` per-Workflow. Helm step pods keep `HELM_*_HOME` under `/tmp` to stay writable.
+- **Cleanup** `workflowDefaults.spec.ttlStrategy` (success 1h / any 24h / fail 3d) + `podGC: OnWorkflowSuccess` — completed Workflows + pods reaped automatically.
+- **Metrics** `controller.metricsConfig.enabled: true` (`:8080/metrics`); `serviceMonitor.enabled: false` — this cluster scrapes via Alloy/Mimir, not prometheus-operator. Wire via an Alloy `discovery.kubernetes` target if needed.
+- **Artifacts** not configured — the smoke pipelines don't need them.
+
+**Smoke test:** [mlops/argo-wf/helm-deploy-test.yaml](mlops/argo-wf/helm-deploy-test.yaml) — a DAG Workflow that proves the pattern end-to-end: runs in `argo` under `argo-workflow`, deploys two `podinfo` Helm releases into `mlops-pipelines` in order (`base` → `app` via `dependencies`), parameterised `action=install|uninstall` and `target-ns`. Submit with `argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml`.
+
+⚠ **Prune caveat:** `mlops-pipelines` is now an Argo-managed `extraObject` under `prune: true`. Disabling `enable_argo_workflows` prunes the Application → deletes the `Namespace` **and everything Helm deployed inside it**. Annotate the Namespace `argocd.argoproj.io/sync-options: Prune=false` to protect it.
+
+**Remaining prod hardening** (each is a values edit, no rework):
+1. **Auth** — swap `server.authModes` to `[sso]` + `server.sso` (Keycloak OIDC): `issuer`/`clientId`/`clientSecret`/`redirectUrl`/`scopes: [groups]`/`rbac.enabled: true`. Drop the `argo-ui` token objects. Group→SA mapping via `workflows.argoproj.io/rbac-rule` annotations. OIDC secret via External Secrets (no ESO in this repo yet — add it or SealedSecrets, like the jupyterhub-oidc skeleton).
+2. **Artifacts** — `artifactRepository.s3` (bucket/endpoint/region) + an ExternalSecret `argo-artifacts` in the workflow ns (`argo`) via `extraObjects`. On EKS prefer Pod Identity (`useSDKCreds: true`, drop static keys) + an S3 bucket + role in Terraform, mirroring the Mimir S3 wiring.
+3. **CRD-shipping charts** — if pipelines deploy charts with their own CRDs/cluster objects, grant a narrow ClusterRole+ClusterRoleBinding for exactly those (cluster-wide — add deliberately, `wf-helm-deployer` is namespaced-only).
+4. **Network** — if Kyverno/NetworkPolicy lands, add a default-deny NetworkPolicy for `argo` + target ns (DNS + egress to kube-apiserver + S3) via `extraObjects`; the securityContexts are already restricted-compliant.
 
 ## ECR repositories
 
@@ -315,19 +328,21 @@ kubectl delete pv <pv-name>
 kubectl -n piraeus-datastore exec deploy/linstor-controller -- \
   linstor resource-definition delete <pv-name>
 
-# Argo Workflows — manual helm test (NOT via GitOps yet)
-helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
-kubectl create ns argo
-kubectl create ns mlops-pipelines   # must exist before install (chart makes SA/Role here)
-helm upgrade --install argo-wf argo/argo-workflows \
-  -n argo -f argocd/helm-values/argo-workflows/values.yaml
+# Argo Workflows — installed via ArgoCD (enable_argo_workflows toggle); ns `argo` + mlops-pipelines auto-created
+kubectl -n argocd get applicationset argo-workflows
+kubectl -n argocd get app argo-workflows
 
-# UI login token (paste as "Bearer <token>" in the client-auth field)
-kubectl -n argo get secret argo-ui.service-account-token \
-  -o jsonpath='{.data.token}' | base64 -d; echo
-kubectl -n argo port-forward svc/argo-wf-argo-workflows-server 2746:2746
+# UI login token (paste as "Bearer <token>" in the client-auth field) — UI on argo-workflows.local
+echo "Bearer $(kubectl -n argo get secret argo-ui.service-account-token \
+  -o jsonpath='{.data.token}' | base64 -d)"
+kubectl -n argo port-forward svc/argo-argo-workflows-server 2746:2746   # fallback if no ingress
 
-# Submit a smoke workflow (runs under SA argo-workflow in mlops-pipelines)
-argo submit -n mlops-pipelines --watch --serviceaccount argo-workflow \
+# Submit hello-world smoke (runs in `argo` under SA argo-workflow — NOT in a target ns)
+argo submit -n argo --watch --serviceaccount argo-workflow \
   https://raw.githubusercontent.com/argoproj/argo-workflows/main/examples/hello-world.yaml
+
+# Cross-ns Helm-deploy smoke: DAG installs podinfo into mlops-pipelines in order, then verify
+argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml
+helm -n mlops-pipelines list
+argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml -p action=uninstall  # teardown
 ```

@@ -43,5 +43,6 @@ locals {
     kube_state_metrics  = true
     # mlops layer addons
     jupyterhub          = true
+    argo_workflows      = true
   }
 }

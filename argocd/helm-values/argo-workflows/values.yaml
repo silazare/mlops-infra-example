@@ -1,15 +1,11 @@
 ---
-# Test deploy: helm only, no Ingress, client-auth via SA token, port-forward access.
-# Migration path to prod documented in CLAUDE.md.
-
-# Minified CRDs as chart templates (no pre-install Job / no network).
 crds:
   install: true
   keep: true
   full: false
 
-# Cluster-scoped controller. Argo in ns `argo`, workflows in `mlops-pipelines`.
-singleNamespace: false
+# Namespaced controller - argo control-plane and workflows in ns argo
+singleNamespace: true
 
 # Common tag for all images
 images:
@@ -18,13 +14,10 @@ images:
 
 controller:
   replicas: 1
-  workflowNamespaces:
-    - mlops-pipelines
   parallelism: 5
   resources:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }
-  # Metrics endpoint
   metricsConfig:
     enabled: true
   serviceMonitor:
@@ -89,12 +82,20 @@ server:
   replicas: 1
   servicePort: 2746
   serviceType: ClusterIP
-  # client mode: log in to UI with an SA bearer token (see extraObjects)
+  # client mode: log in to UI with an SA bearer token
   authModes:
     - client
   secure: false
   ingress:
-    enabled: false
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - argo-workflows.local
+    paths:
+      - /
+    pathType: Prefix
+    annotations: {}
+    tls: []
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { cpu: 250m, memory: 256Mi }
@@ -121,20 +122,21 @@ workflow:
 
 useStaticCredentials: true
 
-# UI login SA + long-lived token. ClusterRoleBinding so the UI sees all namespaces.
 extraObjects:
+  # UI login identity: SA + token + admin on ns argo
   - apiVersion: v1
     kind: ServiceAccount
     metadata:
       name: argo-ui
   - apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRoleBinding
+    kind: RoleBinding
     metadata:
       name: argo-ui-admin
+      namespace: argo
     roleRef:
       apiGroup: rbac.authorization.k8s.io
       kind: ClusterRole
-      name: argo-workflows-admin
+      name: argo-argo-workflows-admin
     subjects:
       - kind: ServiceAccount
         name: argo-ui
@@ -146,3 +148,50 @@ extraObjects:
       annotations:
         kubernetes.io/service-account.name: argo-ui
     type: kubernetes.io/service-account-token
+
+  # --- Cross-namespace Helm deployer ---
+  # Target namespace for test pipelines deploys
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: mlops-pipelines
+  # One reusable ClusterRole, then a RoleBinding per target ns granting it to the workflow SA
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: wf-helm-deployer
+    rules:
+      - apiGroups: [""]
+        resources: [secrets, configmaps, services, serviceaccounts, persistentvolumeclaims]
+        verbs: ["*"]
+      - apiGroups: ["apps"]
+        resources: [deployments, statefulsets, daemonsets, replicasets]
+        verbs: ["*"]
+      - apiGroups: ["batch"]
+        resources: [jobs, cronjobs]
+        verbs: ["*"]
+      - apiGroups: ["networking.k8s.io"]
+        resources: [ingresses, networkpolicies]
+        verbs: ["*"]
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        resources: [roles, rolebindings]
+        verbs: ["*"]
+      - apiGroups: ["autoscaling"]
+        resources: [horizontalpodautoscalers]
+        verbs: ["*"]
+      - apiGroups: ["policy"]
+        resources: [poddisruptionbudgets]
+        verbs: ["*"]
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: argo-workflow-helm
+      namespace: mlops-pipelines
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: wf-helm-deployer
+    subjects:
+      - kind: ServiceAccount
+        name: argo-workflow
+        namespace: argo

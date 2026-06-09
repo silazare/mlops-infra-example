@@ -1,0 +1,41 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: argo-workflows
+  namespace: argocd
+spec:
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            enable_argo_workflows: "true"
+  template:
+    metadata:
+      name: argo-workflows
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      sources:
+        - repoURL: https://argoproj.github.io/argo-helm
+          chart: argo-workflows
+          targetRevision: 1.0.14
+          helm:
+            releaseName: argo
+            valueFiles:
+              - $values/argocd/helm-values/argo-workflows/values.yaml
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: "{{metadata.annotations.target_revision}}"
+          ref: values
+      destination:
+        server: "{{server}}"
+        namespace: argo
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
