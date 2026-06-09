@@ -42,7 +42,7 @@ locals {
     metrics_server      = true
     kube_state_metrics  = true
     # mlops layer addons
-    jupyterhub          = true
-    argo_workflows      = true
+    jupyterhub     = true
+    argo_workflows = true
   }
 }
