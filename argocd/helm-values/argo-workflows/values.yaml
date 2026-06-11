@@ -16,8 +16,12 @@ controller:
   replicas: 1
   parallelism: 5
   resources:
-    requests: { cpu: 100m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 512Mi }
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
   metricsConfig:
     enabled: true
   serviceMonitor:
@@ -53,8 +57,12 @@ controller:
 
 executor:
   resources:
-    requests: { cpu: 50m, memory: 64Mi }
-    limits: { cpu: 250m, memory: 256Mi }
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
   securityContext:
     runAsNonRoot: true
     readOnlyRootFilesystem: true
@@ -97,8 +105,12 @@ server:
     annotations: {}
     tls: []
   resources:
-    requests: { cpu: 50m, memory: 64Mi }
-    limits: { cpu: 250m, memory: 256Mi }
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
   podSecurityContext:
     runAsNonRoot: true
     seccompProfile:
