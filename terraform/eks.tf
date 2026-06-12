@@ -163,6 +163,18 @@ module "eks" {
     }
   }
 
+  # Istio istiod serves its admission webhook (sidecar injection + config validation) on 15017
+  node_security_group_additional_rules = {
+    istio_webhook = {
+      description                   = "Cluster API to istiod admission webhook"
+      protocol                      = "tcp"
+      from_port                     = 15017
+      to_port                       = 15017
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+  }
+
   node_security_group_tags = {
     # Karpenter should discover exactly one SG with this tag
     "karpenter.sh/discovery" = local.name

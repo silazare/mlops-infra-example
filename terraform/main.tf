@@ -7,7 +7,9 @@ data "aws_partition" "current" {}
 locals {
   name            = "mltest"
   cluster_version = "1.36"
-  region          = "eu-west-1"
+  # self-hosted Ubuntu AMI publication — pin separately
+  ubuntu_eks_version = "1.35"
+  region             = "eu-west-1"
 
   vpc_cidr = "10.0.0.0/16"
   azs      = slice(data.aws_availability_zones.available.names, 0, 3)

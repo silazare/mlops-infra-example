@@ -190,7 +190,7 @@ EOF
 
 // Ubuntu EC2NodeClass and NodePool (self-hosted image) — general-purpose CPU workloads
 data "aws_ssm_parameter" "ubuntu_eks_ami" {
-  name = "/aws/service/canonical/ubuntu/eks/24.04/${local.cluster_version}/stable/current/amd64/hvm/ebs-gp3/ami-id"
+  name = "/aws/service/canonical/ubuntu/eks/24.04/${local.ubuntu_eks_version}/stable/current/amd64/hvm/ebs-gp3/ami-id"
 }
 
 data "cloudinit_config" "ubuntu_node" {
