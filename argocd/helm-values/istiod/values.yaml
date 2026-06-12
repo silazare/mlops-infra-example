@@ -1,0 +1,18 @@
+# istiod control plane
+pilot:
+  autoscaleEnabled: false
+  replicaCount: 1
+  nodeSelector:
+    karpenter.sh/controller: "true"
+  tolerations:
+    - key: karpenter.sh/controller
+      operator: Exists
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+meshConfig:
+  # envoy access logs to stdout > picked up by Alloy and Loki
+  accessLogFile: /dev/stdout

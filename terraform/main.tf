@@ -6,7 +6,7 @@ data "aws_partition" "current" {}
 
 locals {
   name            = "mltest"
-  cluster_version = "1.35"
+  cluster_version = "1.36"
   region          = "eu-west-1"
 
   vpc_cidr = "10.0.0.0/16"
@@ -19,8 +19,8 @@ locals {
   }
 
   # Chart versions for helm_releases in the EKS layer
-  argocd_version    = "9.5.2"
-  karpenter_version = "1.11.1"
+  argocd_version    = "9.5.21"
+  karpenter_version = "1.13.0"
 
   # Git ref consumed by the root Application and propagated to all ApplicationSets
   argocd_target_revision = "master"
@@ -41,8 +41,8 @@ locals {
     nvidia_gpu_operator = true
     metrics_server      = true
     kube_state_metrics  = true
-    # mlops layer addons
-    jupyterhub     = true
-    argo_workflows = true
+    istio               = true
+    jupyterhub          = false # mlops layer
+    argo_workflows      = false # mlops layer
   }
 }
