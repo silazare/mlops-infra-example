@@ -2,6 +2,10 @@
 pilot:
   autoscaleEnabled: false
   replicaCount: 1
+  env:
+    # Gateway API Inference Extension (llm-d EPP ext-proc routing)
+    ENABLE_GATEWAY_API_INFERENCE_EXTENSION: "true"
+    SUPPORT_GATEWAY_API_INFERENCE_EXTENSION: "true"
   nodeSelector:
     karpenter.sh/controller: "true"
   tolerations:

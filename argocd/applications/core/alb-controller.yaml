@@ -14,6 +14,8 @@ spec:
   template:
     metadata:
       name: alb-controller
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
     spec:
       project: default
       sources:

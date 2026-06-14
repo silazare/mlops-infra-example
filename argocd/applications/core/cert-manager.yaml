@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: loki
+  name: cert-manager
   namespace: argocd
 spec:
   generators:
@@ -10,34 +10,31 @@ spec:
         selector:
           matchLabels:
             argocd.argoproj.io/secret-type: cluster
-            enable_monitoring: "true"
+            enable_llm_d: "true"
   template:
     metadata:
-      name: loki
+      name: cert-manager
       annotations:
-        argocd.argoproj.io/sync-wave: "1"
-      finalizers:
-        - resources-finalizer.argocd.argoproj.io
+        argocd.argoproj.io/sync-wave: "0"
     spec:
       project: default
       sources:
-        # Loki single-binary, filesystem storage. Logs are shipped by Alloy
-        - repoURL: https://grafana.github.io/helm-charts
-          chart: loki
-          targetRevision: 6.55.0
+        - repoURL: https://charts.jetstack.io
+          chart: cert-manager
+          targetRevision: v1.20.2
           helm:
-            releaseName: loki
             valueFiles:
-              - $values/argocd/helm-values/loki/values.yaml
+              - $values/argocd/helm-values/cert-manager/values.yaml
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: "{{metadata.annotations.target_revision}}"
           ref: values
       destination:
         server: "{{server}}"
-        namespace: monitoring
+        namespace: cert-manager
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
         syncOptions:
           - CreateNamespace=true
+          - ServerSideApply=true

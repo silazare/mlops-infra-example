@@ -1,0 +1,41 @@
+# cert-manager is a prerequisite for the llm-d stack
+crds:
+  enabled: true
+
+replicaCount: 1
+nodeSelector:
+  karpenter.sh/controller: "true"
+tolerations:
+  - key: karpenter.sh/controller
+    operator: Exists
+    effect: NoSchedule
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+
+webhook:
+  replicaCount: 1
+  nodeSelector:
+    karpenter.sh/controller: "true"
+  tolerations:
+    - key: karpenter.sh/controller
+      operator: Exists
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+cainjector:
+  replicaCount: 1
+  nodeSelector:
+    karpenter.sh/controller: "true"
+  tolerations:
+    - key: karpenter.sh/controller
+      operator: Exists
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi

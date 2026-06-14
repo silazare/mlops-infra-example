@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# CRDs required for the llm-d / Gateway-API-Inference-Extension stack.
+#
+# gateway-api : STANDARD channel (Gateway, GatewayClass, HTTPRoute, ReferenceGrant)
+# inference-extension : InferencePool (v1) + InferenceObjective
+resources:
+  - github.com/kubernetes-sigs/gateway-api/config/crd?ref=v1.5.1
+  - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/v1.5.0/config/crd/bases/inference.networking.k8s.io_inferencepools.yaml
+  - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/v1.5.0/config/crd/bases/inference.networking.x-k8s.io_inferenceobjectives.yaml

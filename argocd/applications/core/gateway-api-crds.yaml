@@ -1,0 +1,33 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: gateway-api-crds
+  namespace: argocd
+spec:
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            enable_llm_d: "true"
+  template:
+    metadata:
+      name: gateway-api-crds
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/silazare/mlops-infra-example
+        targetRevision: "{{metadata.annotations.target_revision}}"
+        path: argocd/manifests/gateway-api-crds
+      destination:
+        server: "{{server}}"
+        namespace: kube-system   # CRDs are cluster-scoped
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true

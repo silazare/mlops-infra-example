@@ -14,6 +14,8 @@ spec:
   template:
     metadata:
       name: kube-state-metrics
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
