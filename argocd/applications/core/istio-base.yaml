@@ -35,3 +35,11 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+          - RespectIgnoreDifferences=true
+      ignoreDifferences:
+        # istiod's validationController self-manages caBundle + failurePolicy on the default validating webhook at runtime
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          jqPathExpressions:
+            - '.webhooks[].clientConfig.caBundle'
+            - '.webhooks[].failurePolicy'

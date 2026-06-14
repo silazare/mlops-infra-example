@@ -37,13 +37,16 @@ spec:
           selfHeal: true
         syncOptions:
           - ServerSideApply=true
+          - RespectIgnoreDifferences=true
       ignoreDifferences:
-        # istiod self-injects caBundle into its webhooks at runtime
+        # istiod self-injects caBundle + toggles failurePolicy on its webhooks at runtime
         - group: admissionregistration.k8s.io
           kind: MutatingWebhookConfiguration
           jqPathExpressions:
             - '.webhooks[].clientConfig.caBundle'
+            - '.webhooks[].failurePolicy'
         - group: admissionregistration.k8s.io
           kind: ValidatingWebhookConfiguration
           jqPathExpressions:
             - '.webhooks[].clientConfig.caBundle'
+            - '.webhooks[].failurePolicy'
