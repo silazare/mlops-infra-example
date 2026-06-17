@@ -5,9 +5,12 @@ hub:
   # Single DB for non-production.
   db:
     type: sqlite-pvc
+    upgrade: true          # auto-migrate DB schema on chart/JupyterHub version bump
     pvc:
       storageClassName: gp3
       storage: 1Gi
+  # One server per user (no multi-server UI)
+  allowNamedServers: false
   # Pin Hub to the ubuntu Karpenter pool (label) + tolerate its taint.
   nodeSelector:
     nodegroup: ubuntu
@@ -31,6 +34,7 @@ hub:
   config:
     JupyterHub:
       authenticator_class: dummy
+      shutdown_on_logout: true   # stop the user's server on logout (free resources)
     DummyAuthenticator:
       password: "admin123!" # CHANGEME!
     Authenticator:
