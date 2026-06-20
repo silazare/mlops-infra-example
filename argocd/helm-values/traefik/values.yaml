@@ -59,13 +59,13 @@ service:
     # service.beta.kubernetes.io/aws-load-balancer-security-groups: ${aws_security_group.ingress_traefik_external.id}
     # service.beta.kubernetes.io/aws-load-balancer-eip-allocations: eipalloc-aaaa,eipalloc-bbbb,eipalloc-cccc
 
-logs:
-  general:
-    format: json
-    level: INFO
-  access:
-    enabled: true
-    format: json
+log:
+  format: json
+  level: INFO
+
+accessLog:
+  enabled: true
+  format: json
 
 metrics:
   prometheus:
