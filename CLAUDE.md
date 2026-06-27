@@ -1,6 +1,6 @@
 # Project Overview
 
-AWS EKS cluster bootstrap for ML/observability workloads, built on the same GitOps Bridge pattern as [argocd-infra-example](../argocd-infra-example/) but with a Mimir+Alloy+Loki+Grafana stack instead of kube-prometheus-stack, NVIDIA GPU Operator on Karpenter-provisioned GPU nodes, four Karpenter NodePools (CPU + GPU, AL2023 and Ubuntu), in-cluster image builds via BuildKit, a JupyterLab Argo Application synced manually from `mlops/`, a Piraeus/LINSTOR persistent-storage stack (DRBD9 replication + LVM-thin) running as a bare-metal-shaped POC on a dedicated managed node group plus diskless DRBD clients on the Karpenter `ubuntu` pool, and an Istio service-mesh control plane (base + istiod, gateway deferred) for upcoming llm-d / kubeflow experiments.
+AWS EKS cluster bootstrap for ML/observability workloads, built on the same GitOps Bridge pattern as [argocd-infra-example](../argocd-infra-example/) but with a Mimir+Alloy+Loki+Grafana stack instead of kube-prometheus-stack, NVIDIA GPU Operator on Karpenter-provisioned GPU nodes, four Karpenter NodePools (CPU + GPU, AL2023 and Ubuntu), in-cluster image builds via BuildKit, a JupyterLab Argo Application synced manually from `mlops/`, a Piraeus/LINSTOR persistent-storage stack (DRBD9 replication + LVM-thin) running as a bare-metal-shaped POC on a dedicated managed node group plus diskless DRBD clients on the Karpenter `ubuntu` pool, an Istio service-mesh control plane (base + istiod) with the Gateway-API Inference Extension enabled, and an **llm-d LLM-inference stack** (vLLM + EPP KV-cache-aware pod routing, gated by `enable_llm_d`) — Qwen2.5-0.5B serving + smart routing verified (M1); LiteLLM aggregator + external gateway still pending.
 
 Cluster name is `mltest`, region `eu-west-1`, K8s `1.36` (control plane + AL2023 nodes). **Self-hosted Ubuntu nodes pin a separate `local.ubuntu_eks_version` (`1.35`)** because Canonical lags EKS on Ubuntu AMI publication — the `24.04/1.36` SSM path 404s until they ship it. kubelet 1.35 against API 1.36 is within version-skew policy; bump `ubuntu_eks_version` to match `cluster_version` once the SSM path resolves. Sandbox-grade — single-replica everywhere, non-production secrets in git, local TF state.
 
@@ -53,12 +53,19 @@ argocd/applications/              # GitOps — discovered recursively by the roo
     istiod.yaml                   # ApplicationSet, Istio control plane (sync-wave 1); ignoreDifferences on webhook caBundle
     piraeus-operator.yaml         # ApplicationSet, OCI chart from ghcr.io/piraeusdatastore — operator + CRDs (sync-wave 0)
     linstor-cluster.yaml          # ApplicationSet, OCI chart (independent revision) — LinstorCluster CR + SatelliteConfig + SCs (sync-wave 1)
+    gateway-api-crds.yaml         # ApplicationSet, gated enable_llm_d (wave 0); vendored Gateway-API + GAIE v1.5 CRDs (SSA). See "llm-d inference"
+    cert-manager.yaml             # ApplicationSet, gated enable_llm_d (wave 0); jetstack cert-manager v1.20.2 (not strictly needed by the router chart, kept for later)
   mlops/
     jupyterlab-llm.yaml           # Plain Application (not ApplicationSet) — manual sync, points at argocd/manifests/jupyterlab-llm/
     jupyterhub.yaml               # ApplicationSet, z2jh chart + $values; gated by enable_jupyterhub; auto-sync; ignoreDifferences on hub Secret + hub/proxy checksum annotations
     argo-workflows.yaml           # ApplicationSet, argo-workflows chart 1.0.14 + $values; gated by enable_argo_workflows; auto-sync; releaseName `argo`; CreateNamespace + ServerSideApply (CRDs)
+    llm-d-recipe.yaml             # ApplicationSet, matrix(clusters{enable_llm_d} × list{models}); per model: router OCI Helm + $values + our llm-d-modelserver chart. ONE list entry = one model. See "llm-d inference"
+
+argocd/charts/                    # in-repo Helm charts (rendered by ArgoCD from a local path)
+  llm-d-modelserver/              # our thin vLLM decode chart (Deployment + PVC + SA); replaces upstream Kustomize modelserver
 
 argocd/helm-values/               # static Helm values pulled via multi-source $values ref
+  llm-d-router/values.yaml        # SHARED llm-d router/EPP values (merged upstream base+optimized-baseline @v0.8.1 + our `# OVERRIDE` deltas: EPP pin v0.9.0, sandbox trims)
   traefik/values.yaml
   alb-controller/values.yaml
   mimir/values.yaml               # ingest-storage disabled, Kafka off, single replica everything
@@ -139,6 +146,7 @@ The same Secret also carries **addon toggle labels** sourced from `local.enabled
 | `enable_istio` | Istio service mesh control plane | istio-base, istiod |
 | `enable_jupyterhub` | multi-user JupyterHub (z2jh) | jupyterhub (mlops layer, not core) |
 | `enable_argo_workflows` | Argo Workflows CI engine | argo-workflows (mlops layer, not core) |
+| `enable_llm_d` | llm-d LLM inference stack | gateway-api-crds, cert-manager (core); llm-d-recipe (mlops) |
 
 Flag-key in `enabled_addons` must match the `matchLabels` suffix (without the `enable_` prefix) — this is the only implicit contract between TF and the GitOps repo. Disabling `enable_linstor` or `enable_monitoring` removes stateful workloads with PVCs (Loki filesystem, Mimir cache, LINSTOR resources under `Retain` policy) — orphan PVs and LINSTOR resource-definitions stay behind, clean manually. Disabling `enable_alb_controller` while `enable_traefik` is on leaves the Traefik Service in `<pending>` (no NLB provisioner).
 
@@ -192,7 +200,7 @@ Four pools:
 | NodePool | AMI | Instance types | Capacity | Taint | Use |
 |---|---|---|---|---|---|
 | `default` | AL2023 (alias `al2023@latest`) | t-family 2–8 vCPU | spot | none | General workloads (Mimir, Loki, Grafana, BuildKit Job, etc.) |
-| `gpu` | AL2023 standard via SSM (`amiFamily: AL2023`) | g4dn.xlarge / g4dn.2xlarge / g5.xlarge / g5.2xlarge | spot | `nvidia.com/gpu=true:NoSchedule` | **Legacy / unused.** Operator-driver path blocked by missing nvcr.io `-amzn2023` driver tags. Kept as reference. |
+| `al2023-gpu` | AL2023 via alias `al2023@latest` (`amiFamily: AL2023`) → **NVIDIA-optimized AMI, driver pre-baked** (alias quirk) | g4dn.xlarge / g4dn.2xlarge / g5.xlarge / g5.2xlarge | spot, `consolidateAfter 15m` (warm) | `nvidia.com/gpu=true:NoSchedule` | **Used by llm-d decode** ([llm-d-modelserver](argocd/charts/llm-d-modelserver/) default `nodeSelector`). Faster cold start than `ubuntu-gpu` — driver baked into the AMI, no GPU-Operator runtime install, no cloud-init. (GPU-Operator's own driver path on AL2023 is unreliable for `-amzn2023` nvcr.io tags, but here the driver comes from the AMI, not the Operator.) |
 | `ubuntu` | Canonical Ubuntu 24.04 EKS via SSM, pinned to `local.ubuntu_eks_version` (1.35, not `cluster_version`) (`amiFamily: Custom` + `cloudinit_config` userData) | t-family 2–4 vCPU | spot | `nodegroup=ubuntu:NoSchedule` | Sandbox for cloud-init / userData debugging **and Piraeus diskless DRBD client tier** (label `storage.k8s.io/satellite=yes` from NodePool template, kernel headers from userData → satellite registers without a storage pool, becomes diskless) |
 | `ubuntu-gpu` | Same Ubuntu 24.04 AMI | g4dn / g5 .xlarge / .2xlarge | spot | `nvidia.com/gpu=true:NoSchedule` | JupyterLab + any GPU workload — driver installed by GPU Operator (nvcr.io ubuntu24.04 tags reliable) |
 
@@ -200,7 +208,7 @@ In addition to the four Karpenter pools and the `karpenter` system NG, the EKS m
 
 The system node group (managed, on EKS side) runs Karpenter itself plus ArgoCD + KSM. The split is: managed group hosts what's required for Karpenter to function; Karpenter provisions capacity for everything above it.
 
-**Karpenter alias quirk:** `alias: al2023@latest` auto-resolves to the **NVIDIA-optimized** AL2023 AMI (`*-nvidia-*`) when the provisioned instance type has a GPU. Same for `bottlerocket@latest`. This is why the legacy `gpu` pool uses an explicit SSM parameter for standard AL2023 instead of the alias — to actually exercise the Operator-driver path.
+**Karpenter alias quirk:** `alias: al2023@latest` auto-resolves to the **NVIDIA-optimized** AL2023 AMI (`*-nvidia-*`) when the provisioned instance type has a GPU. Same for `bottlerocket@latest`. The `al2023-gpu` pool relies on exactly this — the AMI ships the GPU driver pre-baked, so llm-d decode pods get a working GPU without waiting on the GPU-Operator runtime driver install (faster cold start than `ubuntu-gpu`).
 
 ## Provider auth
 
@@ -270,6 +278,33 @@ The whole control-plane **and** the CI workflows live in one namespace `argo`; p
 2. **Artifacts** — `artifactRepository.s3` (bucket/endpoint/region) + an ExternalSecret `argo-artifacts` in the workflow ns (`argo`) via `extraObjects`. On EKS prefer Pod Identity (`useSDKCreds: true`, drop static keys) + an S3 bucket + role in Terraform, mirroring the Mimir S3 wiring.
 3. **CRD-shipping charts** — if pipelines deploy charts with their own CRDs/cluster objects, grant a narrow ClusterRole+ClusterRoleBinding for exactly those (cluster-wide — add deliberately, `wf-helm-deployer` is namespaced-only).
 4. **Network** — if Kyverno/NetworkPolicy lands, add a default-deny NetworkPolicy for `argo` + target ns (DNS + egress to kube-apiserver + S3) via `extraObjects`; the securityContexts are already restricted-compliant.
+
+## llm-d inference
+
+Multi-model LLM serving with **KV-cache-aware pod routing** (llm-d), gated by `enable_llm_d`, namespace `llm-d`. Long-form plan + decisions in [LLM_PLAN.md](LLM_PLAN.md). **Status: M1 reached** — Qwen2.5-0.5B serving + smart routing verified in-cluster (2026-06-27). No external door yet (Gateway/ALB = T6) and no LiteLLM aggregator (T8) — reach it via `port-forward` (README → LLM-D → Smoke test).
+
+### Two routing layers (only Layer 2 exists today)
+- **Layer 2 — pod selection (built):** within one model, Envoy calls the **EPP** (endpoint-picker) via ext-proc gRPC `:9002`; EPP scores vLLM decode pods (queue / kv-cache-utilization / prefix-cache / no-hit-lru, in-process, **no Redis**) and Envoy routes to the pick. Single-replica per model (sandbox), so cross-pod prefix routing is moot — the approximate in-EPP scorer suffices.
+- **Layer 1 — model selection (NOT built):** LiteLLM mapping an alias → per-model upstream (T8).
+
+### Packaging (all-Helm, ArgoCD)
+Phase 0 (gated `enable_llm_d`, both wave 0): `gateway-api-crds` (vendored Gateway-API + GAIE **v1.5** CRDs, SSA) + `cert-manager`. istiod carries `ENABLE_/SUPPORT_GATEWAY_API_INFERENCE_EXTENSION=true` (see Istio section) so a `Gateway`/InferencePool gets ext-proc wiring.
+
+Phase 1 — [llm-d-recipe.yaml](argocd/applications/mlops/llm-d-recipe.yaml) ApplicationSet, **matrix generator** (`clusters{enable_llm_d:"true"} × list{models}`) → one multi-source child Application per model:
+- **src1 (Helm OCI)** `ghcr.io/llm-d/charts/llm-d-router-standalone:v0.9.0` → EPP Deployment (2 containers: `envoy-proxy` + `epp`) + Service (`:80→8081`, `:9002` ext-proc, `:9090` metrics) + **InferencePool** (`inference.networking.k8s.io/v1`). Standalone = emits **no** Gateway/HTTPRoute. Values from the SHARED [values.yaml](argocd/helm-values/llm-d-router/values.yaml) via `$values` + the per-model `llm-d.ai/model` matchLabel inline. `releaseName = resourceName`.
+- **src2 ($values ref)** the repo, so src1 can pull `values.yaml`.
+- **src3 (local Helm)** our [llm-d-modelserver](argocd/charts/llm-d-modelserver/) chart → vLLM `decode` Deployment + weight-cache PVC (`gp3`, `HF_HOME=/model-cache`) + SA, per-model values inline. vLLM = upstream `vllm/vllm-openai:v0.23.0` (NOT llm-d-cuda). **No `HF_TOKEN`** for public models (empty `hfTokenSecret`); set it for gated ones (Phi-4, T10).
+
+### Load-bearing contracts
+- **Name:** router `releaseName = <resourceName>` → InferencePool `metadata.name = <resourceName>` + EPP Service `<resourceName>-epp`. T6's `HTTPRoute.backendRef.name` must equal it (else `BackendNotFound`).
+- **Labels:** router `modelServers.matchLabels` `{llm-d.ai/guide: optimized-baseline, llm-d.ai/model: <modelLabel>}` must equal the decode pod labels our chart emits — else EPP finds zero endpoints. `llm-d.ai/model` is per-model on BOTH sides so a 2nd model's pool doesn't grab the 1st model's pods.
+- **Add a model = ONE entry** in the recipe ApplicationSet `list.elements`. Router base/optimized-baseline values are vendored verbatim in `values.yaml`; our deltas are marked `# OVERRIDE`.
+
+### GPU placement + gotchas
+- Decode runs on the **`al2023-gpu`** Karpenter pool (chart default `nodeSelector: nodegroup=al2023-gpu`) — driver pre-baked in the NVIDIA-optimized AL2023 AMI → fast cold start (no Operator/cloud-init wait). `ubuntu-gpu` also works but is slower (runtime driver install).
+- **EPP log `"Request latency values are invalid for TPOT calculation"` on non-streamed requests is BENIGN** (firstTokenTime ≈ completeTime) — response still returns; use `stream:true` to silence.
+- The EPP Service does **not** set `appProtocol: http2` on `:9002` though the Istio task expects HTTP/2; ext-proc works here regardless — patch only if scoring fails to engage.
+- **Prune:** `enable_llm_d=false` deletes ns `llm-d` + everything in it (sandbox-acceptable; weights re-pull from HF).
 
 ## ECR repositories
 

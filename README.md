@@ -285,3 +285,20 @@ One entry in the `list.elements` of [llm-d-recipe.yaml](argocd/applications/mlop
   replicas: "1"
   maxModelLen: "8192"
 ```
+
+### Smoke test model via port-forward
+
+The entry point is the router Service `<resourceName>-epp:80` (Envoy → EPP → decode pod).
+
+```shell
+# full path through the router (Envoy -> EPP smart pick -> vLLM)
+k -n llm-d port-forward svc/qwen-qwen2-5-0-5b-instruct-epp 8082:80
+
+# list served models
+curl -s localhost:8082/v1/models | jq
+
+# chat completion — stream so the EPP can compute per-token latency
+curl -sN localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","stream":true,
+       "messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}'
+```
