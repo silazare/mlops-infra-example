@@ -37,7 +37,7 @@ flowchart TD
 
         subgraph model["release: qwen-...-modelserver  (Helm: our llm-d-modelserver)"]
             direction TB
-            decode["Deployment qwen-...-decode<br/>vLLM (vllm-openai:v0.23.0) :8000<br/>labels: role=decode, guide, model<br/>node: gpu-ubuntu · 1×GPU"]
+            decode["Deployment qwen-...-decode<br/>vLLM (vllm-openai:v0.23.0) :8000<br/>labels: role=decode, guide, model<br/>node: ubuntu-gpu · 1×GPU"]
             pvc[("PVC model-cache (gp3)<br/>HF_HOME weights")]
         end
     end
@@ -76,4 +76,4 @@ that will front it is T6 (not built yet).
 - **Confirmed (helm template, this session):** router release renders Envoy+EPP+InferencePool; InferencePool name = release name; EPP image pinned v0.9.0; targetPorts 8000 / endpointPickerRef 9002; matchLabels `{guide, model}`; decode pod carries matching labels and has **no** HF_TOKEN.
 - **Inferred (not run on-cluster):** the live request path (Envoy ext-proc → EPP → decode) — standard llm-d behaviour but unverified here.
 - **Object set:** the diagram shows only the runtime-relevant objects. The router release also emits 2 ConfigMaps (envoy + plugins) + a ServiceAccount + RBAC (2 Role / 2 RoleBinding); the modelserver release adds its SA. Omitted for focus.
-- **Unclear / to verify at sync:** EPP `:9002` `appProtocol` for Istio ext-proc; GPU capacity on `gpu-ubuntu`.
+- **Unclear / to verify at sync:** EPP `:9002` `appProtocol` for Istio ext-proc; GPU capacity on `ubuntu-gpu`.

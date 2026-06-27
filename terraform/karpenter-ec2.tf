@@ -335,7 +335,7 @@ data "cloudinit_config" "ubuntu_gpu_node" {
       /etc/eks/bootstrap.sh ${module.eks.cluster_name} \
         --b64-cluster-ca ${module.eks.cluster_certificate_authority_data} \
         --apiserver-endpoint ${module.eks.cluster_endpoint} \
-        --kubelet-extra-args "--node-labels=nodegroup=gpu-ubuntu --register-with-taints=nvidia.com/gpu=true:NoSchedule"
+        --kubelet-extra-args "--node-labels=nodegroup=ubuntu-gpu --register-with-taints=nvidia.com/gpu=true:NoSchedule"
     EOT
   }
 }

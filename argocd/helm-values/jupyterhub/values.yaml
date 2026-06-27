@@ -131,12 +131,12 @@ singleuser:
         mem_guarantee: 8G
         mem_limit: 16G
         image: "quay.io/jupyter/scipy-notebook:2024-10-14"
-    # GPU tier on the gpu-ubuntu Karpenter pool
+    # GPU tier on the ubuntu-gpu Karpenter pool
     - display_name: "GPU"
       description: "CUDA notebook on a GPU node."
       kubespawner_override:
         node_selector:
-          nodegroup: gpu-ubuntu
+          nodegroup: ubuntu-gpu
         tolerations:
           - key: nvidia.com/gpu
             operator: Equal

@@ -27,7 +27,7 @@ resources:
     memory: 16Gi
 
 nodeSelector:
-  nodegroup: gpu-ubuntu
+  nodegroup: ubuntu-gpu
 tolerations:
   - key: nvidia.com/gpu
     operator: Exists
