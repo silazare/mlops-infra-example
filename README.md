@@ -14,12 +14,13 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 - [x] NVIDIA GPU Operator
 - [x] Grafana Mimir + Alloy for Monitoring
 - [x] Piraeus Operator for Linstor tests
-- [x] Istio
+- [x] Istio for LLM inference smart routing
 
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] JupyterLab (CUDA/LLM) — image built in-cluster via BuildKit Job, deploy via manual-sync Argo Application
 - [x] JupyterHub — multi-user Jupyterhub
 - [x] Argo Workflows - CI for ML pipelines
+- [x] LLM-D stack — multi-model LLM inference (vLLM + EPP smart pod routing)
 
 ### Core Addons toggle
 Each core component is gated by an `enable_<addon>` flag in [terraform/main.tf](terraform/main.tf).
@@ -237,4 +238,50 @@ argo submit -n argo --serviceaccount argo-workflow --watch \
 # cross-ns Helm deploy
 argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml
 helm -n mlops-pipelines list
+```
+
+## LLM-D deployment
+
+Inspired by: https://medium.com/@prasannanattuthurai/serving-multiple-llms-on-kubernetes-with-intelligent-routing-using-llm-d-istio-and-litellm-7d33760d1001
+
+Serve small LLMs (start `Qwen/Qwen2.5-0.5B-Instruct`) with **smart pod routing** — pick the vLLM pod with the warmest KV-cache, not round-robin. Installed via ArgoCD, gated by `enable_llm_d`, in namespace `llm-d`.
+
+### How a request flows (simple version)
+
+```
+client  →  router (Envoy)  →  EPP  →  vLLM model pod
+                                │
+                          reads InferencePool
+                       (which pods serve this model)
+```
+
+Step by step flow:
+1. **client** sends an OpenAI-style request (`POST /v1/chat/completions`) to the router Service `:80`.
+2. **router (Envoy)** is the data-path proxy. Before forwarding, it asks the EPP "which pod?".
+3. **EPP** (llm-d endpoint-picker) is the brain. It looks at the **InferencePool** (the list of pods serving this model), scores them (KV-cache hit / queue depth / prefix match), and returns the best one.
+4. **vLLM model pod** (the `decode` pod, on a GPU node) actually runs the model and streams tokens back.
+
+That's the whole "smart routing" — the `Envoy → EPP → pod` loop. With one replica it just always picks that pod; the value shows up once a model has several replicas.
+
+### What gets deployed (per model)
+
+| Piece | What it is | From |
+|---|---|---|
+| **router + EPP** | Envoy proxy + endpoint-picker + the `InferencePool` | upstream Helm chart `llm-d-router-standalone` v0.9.0 (OCI), shared values in [argocd/helm-values/llm-d-router/](argocd/helm-values/llm-d-router/) |
+| **modelserver** | the vLLM `decode` Deployment + weight-cache PVC + SA | our chart [argocd/charts/llm-d-modelserver/](argocd/charts/llm-d-modelserver/) |
+| **wiring** | one ArgoCD App per model (matrix: clusters × model list) | [argocd/applications/mlops/llm-d-recipe.yaml](argocd/applications/mlops/llm-d-recipe.yaml) |
+
+The router and the modelserver find each other by **labels** (`llm-d.ai/guide` + `llm-d.ai/model`) and by **name** (`InferencePool` name = the model's `resourceName`). Keep those in sync.
+
+### Add a model
+
+One entry in the `list.elements` of [llm-d-recipe.yaml](argocd/applications/mlops/llm-d-recipe.yaml) — nothing else:
+
+```yaml
+- resourceName: phi-4-mini            # short unique id
+  model: microsoft/Phi-4-mini-instruct
+  modelLabel: Phi-4-mini-instruct
+  gpu: "1"
+  replicas: "1"
+  maxModelLen: "8192"
 ```

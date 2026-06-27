@@ -1,0 +1,44 @@
+---
+# --- REQUIRED per model (set inline by the ApplicationSet) ---
+resourceName: ""              # short kebab id, e.g. qwen-qwen2-5-0-5b-instruct
+model: ""                     # exact HF name, e.g. Qwen/Qwen2.5-0.5B-Instruct
+modelLabel: ""                # llm-d.ai/model value, e.g. Qwen2.5-0.5B-Instruct
+                              # (must match the router matchLabels model — contract)
+
+# --- Defaults (override inline only when a model needs it) ---
+guide: optimized-baseline     # llm-d.ai/guide label — the recipe profile
+replicas: 1
+gpu: 1                        # nvidia.com/gpu request+limit (tensor-parallel-size too)
+maxModelLen: 8192
+gpuMemUtil: "0.5"
+tensorParallelSize: 1
+extraArgs: []                 # extra vLLM serve args, e.g. ["--served-model-name=foo"]
+
+image:
+  repository: vllm/vllm-openai   # upstream vLLM (NOT llm-d-cuda)
+  tag: v0.23.0
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: "2"
+    memory: 8Gi
+  limits:
+    memory: 16Gi
+
+nodeSelector:
+  nodegroup: gpu-ubuntu
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+
+# HF weight cache PVC (HF_HOME=/model-cache) so scale-to-zero cold starts don't re-download weights.
+modelCache:
+  enabled: true
+  size: 20Gi
+  storageClass: gp3
+
+# Name of a Secret holding HF_TOKEN (key HF_TOKEN). Empty = no token env
+# Set for gated models (e.g. Phi-4) — see T10.
+hfTokenSecret: ""

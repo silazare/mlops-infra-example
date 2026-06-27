@@ -1,0 +1,93 @@
+---
+# llm-d optimized-baseline recipe — one Application per model
+#
+# ADD A MODEL - ONE entry in `list.elements` below. Nothing else to touch:
+#   • router (EPP + InferencePool) values are SHARED  -> argocd/helm-values/llm-d-router/
+#   • modelserver (vLLM decode) is our SHARED Helm chart -> argocd/charts/llm-d-modelserver/
+#
+# Each child Application is multi-source:
+#   src1 (Helm OCI)   llm-d-router-standalone -> EPP + InferencePool (no Gateway)
+#   src2 ($values)    this repo, so src1 can pull the shared router valueFiles
+#   src3 (Helm local) argocd/charts/llm-d-modelserver -> vLLM decode (GPU) + PVC + SA
+#
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: llm-d-recipe
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  enable_llm_d: "true"
+          # add a model here
+          - list:
+              elements:
+                - resourceName: qwen-qwen2-5-0-5b-instruct
+                  model: Qwen/Qwen2.5-0.5B-Instruct
+                  modelLabel: Qwen2.5-0.5B-Instruct
+                  gpu: "1"
+                  replicas: "1"
+                  maxModelLen: "8192"
+                # - resourceName: phi-4-mini
+                #   model: microsoft/Phi-4-mini-instruct
+                #   modelLabel: Phi-4-mini-instruct
+                #   gpu: "1"
+                #   replicas: "1"
+                #   maxModelLen: "8192"
+  template:
+    metadata:
+      name: "llm-d-recipe-{{ .resourceName }}"
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: default
+      sources:
+        # router/EPP Helm chart (emits no Gateway/HTTPRoute)
+        - repoURL: ghcr.io/llm-d/charts
+          chart: llm-d-router-standalone
+          targetRevision: v0.9.0
+          helm:
+            releaseName: "{{ .resourceName }}"
+            valueFiles:
+              - "$values/argocd/helm-values/llm-d-router/values.yaml"
+            # Per-model: add the model label so each InferencePool selects only its
+            # own decode pods (guide label comes from the shared values file).
+            values: |
+              router:
+                modelServers:
+                  matchLabels:
+                    llm-d.ai/model: "{{ .modelLabel }}"
+        # values for the shared valueFiles above
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: "{{ .metadata.annotations.target_revision }}"
+          ref: values
+        # modelserver Helm chart (vLLM decode), per-model values inline
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: "{{ .metadata.annotations.target_revision }}"
+          path: argocd/charts/llm-d-modelserver
+          helm:
+            releaseName: "{{ .resourceName }}-modelserver"
+            values: |
+              resourceName: "{{ .resourceName }}"
+              model: "{{ .model }}"
+              modelLabel: "{{ .modelLabel }}"
+              gpu: {{ .gpu }}
+              replicas: {{ .replicas }}
+              maxModelLen: {{ .maxModelLen }}
+      destination:
+        server: "{{ .server }}"
+        namespace: llm-d
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

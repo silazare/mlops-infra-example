@@ -1,0 +1,16 @@
+{{- if .Values.modelCache.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.resourceName }}-model-cache
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "llm-d-modelserver.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.modelCache.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.modelCache.size }}
+{{- end }}

@@ -44,7 +44,7 @@ locals {
     metrics_server      = true
     kube_state_metrics  = true
     istio               = true
-    llm_d               = true  # llm-d layer for inference setup
+    llm_d               = true  # mlops layer - llm-d stack for inference setup
     jupyterhub          = false # mlops layer
     argo_workflows      = false # mlops layer
   }

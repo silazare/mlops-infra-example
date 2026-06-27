@@ -29,7 +29,6 @@ backend.config
 # Other temporary files
 .DS_Store
 *tmp*
-*.svg
 
 # Go files
 Gopkg.lock

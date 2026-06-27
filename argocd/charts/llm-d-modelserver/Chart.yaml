@@ -1,0 +1,11 @@
+apiVersion: v2
+name: llm-d-modelserver
+description: >-
+  Thin vLLM decode modelserver for the llm-d optimized-baseline recipe — one
+  release per model. Replaces the upstream Kustomize modelserver base so a new
+  model is one ApplicationSet list entry instead of a copied folder. Pod labels
+  (llm-d.ai/guide + llm-d.ai/model) are the contract the router InferencePool
+  selects on (see argocd/helm-values/llm-d-router/).
+type: application
+version: 0.1.0
+appVersion: "0.23.0"
