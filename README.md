@@ -246,22 +246,35 @@ Inspired by: https://medium.com/@prasannanattuthurai/serving-multiple-llms-on-ku
 
 Serve small LLMs (start `Qwen/Qwen2.5-0.5B-Instruct`) with **smart pod routing** — pick the vLLM pod with the warmest KV-cache, not round-robin. Installed via ArgoCD, gated by `enable_llm_d`, in namespace `llm-d`.
 
-### How a request flows (simple version)
+### How a request flows
 
 ```
-client  →  router (Envoy)  →  EPP  →  vLLM model pod
-                                │
-                          reads InferencePool
-                       (which pods serve this model)
+  DATA — real bytes (▼ spine)                    CONTROL — decides, no bytes (┄►)
+  ───────────────────────────                    ────────────────────────────────
+  client
+    │ 1 · POST /v1/chat/completions
+    ▼
+  Service <rn>-gateway-istio :80         ◄┄ provisioned by ┄  Gateway CR (gatewayClassName: istio, :80)
+    │
+    ▼
+  Envoy (Istio Gateway, managed)         ◄┄ 2 · routed by ┄   HTTPRoute "/"  (backend = InferencePool)
+    │  3 · ext-proc gRPC :9002  ⇄  EPP ┄►  EPP reads InferencePool, scores pods
+    │                                      (kv-cache / queue / prefix)  →  4 · returns "use pod X"
+    ▼  5 · forward to chosen pod :8000
+  vLLM decode pod :8000   (the EPP-picked one, GPU node)
+    │
+    ▼  tokens stream back up the same path to client
 ```
 
-Step by step flow:
-1. **client** sends an OpenAI-style request (`POST /v1/chat/completions`) to the router Service `:80`.
-2. **router (Envoy)** is the data-path proxy. Before forwarding, it asks the EPP "which pod?".
-3. **EPP** (llm-d endpoint-picker) is the brain. It looks at the **InferencePool** (the list of pods serving this model), scores them (KV-cache hit / queue depth / prefix match), and returns the best one.
-4. **vLLM model pod** (the `decode` pod, on a GPU node) actually runs the model and streams tokens back.
+Only the **▼ spine carries bytes** (`client → Envoy → decode pod → back`). Everything on the
+`┄►` side is logic, not traffic — and the `InferencePool` is a config object with **no IP** it just names the pod set (selector) + the picker (EPP).
 
-That's the whole "smart routing" — the `Envoy → EPP → pod` loop. With one replica it just always picks that pod; the value shows up once a model has several replicas.
+Step by step:
+1. *(data)* **client** sends `POST /v1/chat/completions` to the Gateway Service `<resourceName>-gateway-istio:80`.
+2. *(control)* the `HTTPRoute` matches `/` and points its backend at this model's `InferencePool`; the managed Envoy + Service were provisioned by istiod from the `Gateway` CR.
+3. *(control)* because the backend is an `InferencePool`, the Gateway's Envoy consults the **EPP** via ext-proc gRPC `:9002` — "which pod?".
+4. *(control)* **EPP** (llm-d endpoint-picker) reads the `InferencePool`'s pods, scores them (KV-cache hit / queue depth / prefix match), returns the best one.
+5. *(data)* the Gateway's Envoy **forwards** the request to the chosen **vLLM decode pod** `:8000`; tokens stream back up the same spine to the client.
 
 ### What gets deployed (per model)
 
@@ -286,13 +299,30 @@ One entry in the `list.elements` of [llm-d-recipe.yaml](argocd/applications/mlop
   maxModelLen: "8192"
 ```
 
-### Smoke test model via port-forward
+### Smoke test model directly via EPP port-forward
 
 The entry point is the router Service `<resourceName>-epp:80` (Envoy → EPP → decode pod).
 
 ```shell
 # full path through the router (Envoy -> EPP smart pick -> vLLM)
 k -n llm-d port-forward svc/qwen-qwen2-5-0-5b-instruct-epp 8082:80
+
+# list served models
+curl -s localhost:8082/v1/models | jq
+
+# chat completion — stream so the EPP can compute per-token latency
+curl -sN localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","stream":true,
+       "messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}'
+```
+
+### Smoke test model via the Istio Gateway
+
+The external edge `<resourceName>-gateway-istio:80` (Istio Gateway Envoy → EPP smart pick → decode pod).
+
+```shell
+# full path through the Istio Gateway (Envoy -> EPP smart pick -> vLLM)
+k -n llm-d port-forward svc/qwen-qwen2-5-0-5b-instruct-gateway-istio 8082:80
 
 # list served models
 curl -s localhost:8082/v1/models | jq

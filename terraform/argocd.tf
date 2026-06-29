@@ -16,6 +16,14 @@ resource "helm_release" "argocd" {
         - key: karpenter.sh/controller
           operator: Exists
           effect: NoSchedule
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 90
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 90
 
     # HA redis cluster (3 servers + 3 haproxy)
     redis-ha:
@@ -32,8 +40,12 @@ resource "helm_release" "argocd" {
     notifications:
       enabled: false
 
-    # Core reconciler — watches apps and syncs state. StatefulSet, min 1.
+    # Core reconciler — watches apps and syncs state.
+    # dynamicClusterDistribution=true swaps StatefulSet > Deployment so a spot
+    # node loss reschedules the controller immediately instead of hanging on a
+    # stuck Terminating pod.
     controller:
+      dynamicClusterDistribution: true
       replicas: 1
 
     # Disable Argo's built-in HTTPS redirect for sandbox — Traefik terminates TLS

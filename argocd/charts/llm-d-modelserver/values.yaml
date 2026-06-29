@@ -1,5 +1,5 @@
 ---
-# --- REQUIRED per model (set inline by the ApplicationSet) ---
+# --- Required per model (set inline by the ApplicationSet) ---
 resourceName: ""              # short kebab id, e.g. qwen-qwen2-5-0-5b-instruct
 model: ""                     # exact HF name, e.g. Qwen/Qwen2.5-0.5B-Instruct
 modelLabel: ""                # llm-d.ai/model value, e.g. Qwen2.5-0.5B-Instruct
@@ -42,3 +42,13 @@ modelCache:
 # Name of a Secret holding HF_TOKEN (key HF_TOKEN). Empty = no token env
 # Set for gated models (e.g. Phi-4) — see T10.
 hfTokenSecret: ""
+
+# --- Routing edge ---
+# Per model: 
+# an Istio Gateway (istiod auto-provisions the Envoy Deploy+Svc
+# <resourceName>-gateway-istio) + an HTTPRoute that targets this model's
+# InferencePool (name = resourceName, the recipe name contract).
+# The InferencePool/EPP/decode come from the recipe
+gateway:
+  enabled: true
+  gatewayClassName: istio
