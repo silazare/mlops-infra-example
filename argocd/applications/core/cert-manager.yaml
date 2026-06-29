@@ -10,7 +10,7 @@ spec:
         selector:
           matchLabels:
             argocd.argoproj.io/secret-type: cluster
-            enable_llm_d: "true"
+            enable_cert_manager: "true"
   template:
     metadata:
       name: cert-manager

@@ -1,0 +1,17 @@
+{{- if .Values.gateway.enabled }}
+# DestinationRule — the EPP terminates TLS in-process on :9002 with a self-signed
+# cert. The Istio Gateway Envoy must originate TLS for the ext-proc gRPC call to the EPP, otherwise the connection resets
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: {{ .Values.resourceName }}-epp-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "llm-d-modelserver.labels" . | nindent 4 }}
+spec:
+  host: {{ .Values.resourceName }}-epp.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: SIMPLE
+      insecureSkipVerify: true
+{{- end }}

@@ -35,12 +35,16 @@ spec:
                   gpu: "1"
                   replicas: "1"
                   maxModelLen: "8192"
-                # - resourceName: phi-4-mini
-                #   model: microsoft/Phi-4-mini-instruct
-                #   modelLabel: Phi-4-mini-instruct
-                #   gpu: "1"
-                #   replicas: "1"
-                #   maxModelLen: "8192"
+                  gpuMemUtil: "0.5"
+                  hfTokenSecret: ""
+                - resourceName: phi-4-mini-instruct
+                  model: microsoft/Phi-4-mini-instruct
+                  modelLabel: Phi-4-mini-instruct
+                  gpu: "1"
+                  replicas: "1"
+                  maxModelLen: "4096"
+                  gpuMemUtil: "0.9"
+                  hfTokenSecret: ""
   template:
     metadata:
       name: "llm-d-recipe-{{ .resourceName }}"
@@ -81,6 +85,8 @@ spec:
               gpu: {{ .gpu }}
               replicas: {{ .replicas }}
               maxModelLen: {{ .maxModelLen }}
+              gpuMemUtil: "{{ .gpuMemUtil }}"
+              hfTokenSecret: "{{ .hfTokenSecret }}"
       destination:
         server: "{{ .server }}"
         namespace: llm-d

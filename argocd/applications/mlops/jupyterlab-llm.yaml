@@ -1,22 +1,33 @@
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
   name: jupyterlab-llm
   namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
-  source:
-    repoURL: https://github.com/silazare/mlops-infra-example
-    targetRevision: master
-    path: argocd/manifests/jupyterlab-llm
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: jupyterlab
-  syncPolicy:
-    syncOptions:
-      - ServerSideApply=true
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            enable_jupyterlab: "true"
+  template:
+    metadata:
+      name: jupyterlab-llm
+      annotations:
+        argocd.argoproj.io/sync-wave: "3"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/silazare/mlops-infra-example
+        targetRevision: "{{metadata.annotations.target_revision}}"
+        path: argocd/manifests/jupyterlab-llm
+      destination:
+        server: "{{server}}"
+        namespace: jupyterlab
+      # manual sync on
+      syncPolicy:
+        syncOptions:
+          - ServerSideApply=true

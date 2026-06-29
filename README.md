@@ -332,8 +332,8 @@ k -n llm-d port-forward svc/qwen-qwen2-5-0-5b-instruct-gateway-istio 8082:80
 # list served models
 curl -s localhost:8082/v1/models | jq
 
-# chat completion — stream so the EPP can compute per-token latency
-curl -sN localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","stream":true,
-       "messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}'
+# chat completion with SSE stream merge
+curl -s localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
+  | jq -r '.choices[0].message.content'
 ```

@@ -33,7 +33,7 @@ locals {
     "jupyterlab-llm-cache",
   ]
 
-  # Core layer addons
+  # Core and MLOps layers addons
   # Set to false to skip an addon deployment on the cluster.
   enabled_addons = {
     monitoring          = false # alloy + mimir + grafana + loki
@@ -44,7 +44,9 @@ locals {
     metrics_server      = true
     kube_state_metrics  = true
     istio               = true
+    cert_manager        = true
     llm_d               = true  # mlops layer - llm-d stack for inference setup
+    jupyterlab          = false # mlops layer
     jupyterhub          = false # mlops layer
     argo_workflows      = false # mlops layer
   }
