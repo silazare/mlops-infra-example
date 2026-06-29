@@ -5,13 +5,22 @@ kind: HTTPRoute
 metadata:
   name: {{ .Values.resourceName }}-route
   namespace: {{ .Release.Namespace }}
+  annotations:
+    # Apply later after InferencePool exists
+    argocd.argoproj.io/sync-wave: "10"
   labels:
     {{- include "llm-d-modelserver.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - name: {{ .Values.resourceName }}-gateway
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.resourceName }}-gateway
   rules:
-    - backendRefs:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
         - group: inference.networking.k8s.io
           kind: InferencePool
           name: {{ .Values.resourceName }}

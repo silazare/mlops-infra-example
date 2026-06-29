@@ -321,6 +321,11 @@ curl -sN localhost:8082/v1/chat/completions -H 'Content-Type: application/json' 
 The external edge `<resourceName>-gateway-istio:80` (Istio Gateway Envoy → EPP smart pick → decode pod).
 
 ```shell
+k get gateway,httproute -A
+
+k -n llm-d get httproute qwen-qwen2-5-0-5b-instruct-route \
+  -o jsonpath='{.status.parents[*].conditions[?(@.type=="ResolvedRefs")]}'
+
 # full path through the Istio Gateway (Envoy -> EPP smart pick -> vLLM)
 k -n llm-d port-forward svc/qwen-qwen2-5-0-5b-instruct-gateway-istio 8082:80
 
