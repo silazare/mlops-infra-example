@@ -309,7 +309,24 @@ One entry in the `list.elements` of [llm-d-recipe.yaml](argocd/applications/mlop
   maxModelLen: "8192"
 ```
 
-### Smoke test model via the Istio Gateway
+### Smoke test models directly via EPP port-forward
+
+The entry point is the router Service `<resourceName>-epp:80` (Envoy → EPP → decode pod).
+
+```shell
+# full path through the router (Envoy -> EPP smart pick -> vLLM)
+k -n llm-d port-forward svc/qwen-qwen2-5-0-5b-instruct-epp 8082:80
+
+# list served models
+curl -s localhost:8082/v1/models | jq
+
+# chat completion — stream so the EPP can compute per-token latency
+curl -sN localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","stream":true,
+       "messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}'
+```
+
+### Smoke test models via Istio Gateway
 
 The external edge `<resourceName>-gateway-istio:80` (Istio Gateway Envoy → EPP smart pick → decode pod).
 
@@ -330,12 +347,13 @@ curl -s localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
   | jq -r '.choices[0].message.content'
 
-# second model
+# 2nd model
 k -n llm-d port-forward svc/phi-4-mini-instruct-gateway-istio 8083:80
 
 # list served models
 curl -s localhost:8083/v1/models | jq
 
+# chat completion with SSE stream merge
 curl -s localhost:8083/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"microsoft/Phi-4-mini-instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
   | jq -r '.choices[0].message.content'

@@ -148,7 +148,7 @@ spec:
     consolidateAfter: 15m
     consolidationPolicy: WhenEmpty
   limits:
-    nvidia.com/gpu: "1"
+    nvidia.com/gpu: "4"
   template:
     metadata:
       labels:
