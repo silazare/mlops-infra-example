@@ -1,10 +1,13 @@
 {{- if .Values.gateway.enabled }}
-# Istio Gateway — istiod auto-provisions the Envoy Deployment + Service
+# Istio Gateway — istiod auto-provisions the Envoy Deployment + Service.
+# networking.istio.io/service-type pins that Service to ClusterIP
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: {{ .Values.resourceName }}-gateway
   namespace: {{ .Release.Namespace }}
+  annotations:
+    networking.istio.io/service-type: {{ .Values.gateway.serviceType | quote }}
   labels:
     {{- include "llm-d-modelserver.labels" . | nindent 4 }}
 spec:

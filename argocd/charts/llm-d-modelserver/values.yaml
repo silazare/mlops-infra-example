@@ -52,3 +52,6 @@ hfTokenSecret: ""
 gateway:
   enabled: true
   gatewayClassName: istio
+  # Type of the istiod-provisioned gateway Service
+  # Istio defaults to LoadBalancer
+  serviceType: ClusterIP
