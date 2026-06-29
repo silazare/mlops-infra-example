@@ -68,6 +68,11 @@ spec:
                 modelServers:
                   matchLabels:
                     llm-d.ai/model: "{{ .modelLabel }}"
+                proxy:
+                  presets:
+                    envoy:
+                      configMap:
+                        name: "{{ .resourceName }}-envoy"
         # values for the shared valueFiles above
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: "{{ .metadata.annotations.target_revision }}"

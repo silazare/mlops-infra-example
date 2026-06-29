@@ -27,6 +27,16 @@ Each core component is gated by an `enable_<addon>` flag in [terraform/main.tf](
 Flags are published as labels on the ArgoCD cluster Secret; each ApplicationSet in [argocd/applications/core/](argocd/applications/core/) filters on its own label. Set a value to `false` and Argo prunes the addon.
 
 
+## Contents
+
+- [Deployment](#deployment)
+- [Delete infrastructure](#delete-infrastructure)
+- [JupyterLab example with GPU](#jupyterlab-example-with-gpu)
+- [Piraeus Operator tests for Linstor](#piraeus-operator-tests-for-linstor)
+- [JupyterHub deployment](#jupyterhub-deployment)
+- [Argo Workflows deployment](#argo-workflows-deployment)
+- [LLM-D deployment](#llm-d-deployment)
+
 ## Deployment
 
 1. Terraform — creates VPC, EKS, Karpenter, ArgoCD, cluster Secret, root Application.
@@ -299,23 +309,6 @@ One entry in the `list.elements` of [llm-d-recipe.yaml](argocd/applications/mlop
   maxModelLen: "8192"
 ```
 
-### Smoke test model directly via EPP port-forward
-
-The entry point is the router Service `<resourceName>-epp:80` (Envoy → EPP → decode pod).
-
-```shell
-# full path through the router (Envoy -> EPP smart pick -> vLLM)
-k -n llm-d port-forward svc/qwen-qwen2-5-0-5b-instruct-epp 8082:80
-
-# list served models
-curl -s localhost:8082/v1/models | jq
-
-# chat completion — stream so the EPP can compute per-token latency
-curl -sN localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","stream":true,
-       "messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}'
-```
-
 ### Smoke test model via the Istio Gateway
 
 The external edge `<resourceName>-gateway-istio:80` (Istio Gateway Envoy → EPP smart pick → decode pod).
@@ -335,5 +328,15 @@ curl -s localhost:8082/v1/models | jq
 # chat completion with SSE stream merge
 curl -s localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
+  | jq -r '.choices[0].message.content'
+
+# second model
+k -n llm-d port-forward svc/phi-4-mini-instruct-gateway-istio 8083:80
+
+# list served models
+curl -s localhost:8083/v1/models | jq
+
+curl -s localhost:8083/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"microsoft/Phi-4-mini-instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
   | jq -r '.choices[0].message.content'
 ```
