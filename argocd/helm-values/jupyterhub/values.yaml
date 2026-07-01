@@ -115,23 +115,51 @@ singleuser:
   startTimeout: 600
   # Profiles list
   profileList:
-    - display_name: "Small"
-      description: "Light notebooks."
+    - display_name: "CPU Only"
+      description: "Pick image and resource tier below."
       default: true
-      kubespawner_override:
-        cpu_guarantee: 0.25
-        cpu_limit: 1
-        mem_guarantee: 1G
-        mem_limit: 2G
-    - display_name: "Large"
-      description: "Heavier workloads."
-      kubespawner_override:
-        cpu_guarantee: 1
-        cpu_limit: 4
-        mem_guarantee: 8G
-        mem_limit: 16G
-        image: "quay.io/jupyter/scipy-notebook:2024-10-14"
-    # GPU tier on the ubuntu-gpu Karpenter pool
+      profile_options:
+        image:
+          display_name: "Image"
+          choices:
+            minimal:
+              display_name: "Minimal Notebook"
+              default: true
+              kubespawner_override:
+                image: "quay.io/jupyter/minimal-notebook:2024-10-14"
+            scipy:
+              display_name: "SciPy Notebook"
+              kubespawner_override:
+                image: "quay.io/jupyter/scipy-notebook:2024-10-14"
+        resources:
+          display_name: "Resource Allocation"
+          choices:
+            small:
+              display_name: "1 CPU / 2Gb RAM"
+              default: true
+              # cpu: 0.25 reserved, burst to 1. mem: 1G reserved, burst to 2G
+              kubespawner_override:
+                cpu_guarantee: 0.25
+                cpu_limit: 1
+                mem_guarantee: 1G
+                mem_limit: 2G
+            medium:
+              display_name: "2 CPU / 4Gb RAM"
+              # cpu: 0.5 reserved, burst to 2. mem: 2G reserved, burst to 4G
+              kubespawner_override:
+                cpu_guarantee: 0.5
+                cpu_limit: 2
+                mem_guarantee: 2G
+                mem_limit: 4G
+            large:
+              display_name: "4 CPU / 16Gb RAM"
+              # cpu: 1 reserved, burst to 4. mem: 8G reserved, burst to 16G
+              kubespawner_override:
+                cpu_guarantee: 1
+                cpu_limit: 4
+                mem_guarantee: 8G
+                mem_limit: 16G
+    # GPU tier on the ubuntu-gpu Karpenter pool (own card — node_selector + toleration differ)
     - display_name: "GPU"
       description: "CUDA notebook on a GPU node."
       kubespawner_override:
