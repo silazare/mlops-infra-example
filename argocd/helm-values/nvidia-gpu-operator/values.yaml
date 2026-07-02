@@ -37,6 +37,9 @@ sandboxWorkloads:
 
 dcgmExporter:
   enabled: true
+  # Custom metrics set
+  config:
+    name: dcgm-metrics-custom
 
 # Adds GPU-specific node labels
 gfd:
