@@ -44,7 +44,7 @@ locals {
     metrics_server      = true
     kube_state_metrics  = true
     istio               = true
-    cert_manager        = true
+    cert_manager        = false
     llm_d               = true  # mlops layer - llm-d stack for inference setup
     jupyterlab          = false # mlops layer
     jupyterhub          = false # mlops layer

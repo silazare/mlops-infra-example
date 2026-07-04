@@ -71,8 +71,16 @@ spec:
                 proxy:
                   presets:
                     envoy:
+                      # Separate per model envoy ConfigMap and the sidecar volume that mounts it
                       configMap:
                         name: "{{ .resourceName }}-envoy"
+                      volumes:
+                        - name: config
+                          configMap:
+                            name: "{{ .resourceName }}-envoy"
+                            items:
+                              - key: envoy.yaml
+                                path: envoy.yaml
         # values for the shared valueFiles above
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: "{{ .metadata.annotations.target_revision }}"
