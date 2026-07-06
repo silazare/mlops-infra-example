@@ -145,7 +145,7 @@ spec:
     budgets:
       - nodes: 10%
     # Keep GPU nodes warm
-    consolidateAfter: 15m
+    consolidateAfter: 10m
     consolidationPolicy: WhenEmpty
   limits:
     nvidia.com/gpu: "4"
@@ -392,10 +392,10 @@ spec:
   disruption:
     budgets:
       - nodes: 10%
-    consolidateAfter: 15m
+    consolidateAfter: 10m
     consolidationPolicy: WhenEmpty
   limits:
-    nvidia.com/gpu: "1"
+    nvidia.com/gpu: "4"
   template:
     metadata:
       labels:

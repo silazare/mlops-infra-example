@@ -324,6 +324,25 @@ curl -s localhost:8082/v1/models | jq
 curl -sN localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","stream":true,
        "messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}'
+
+curl -s localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
+  | jq -r '.choices[0].message.content'
+
+#### 2nd model
+
+k -n llm-d port-forward svc/phi-4-mini-instruct-epp 8083:80
+
+# list served models
+curl -s localhost:8083/v1/models | jq
+
+curl -sN localhost:8083/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"microsoft/Phi-4-mini-instruct","stream":true,
+       "messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}'
+
+curl -s localhost:8083/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"microsoft/Phi-4-mini-instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
+  | jq -r '.choices[0].message.content'
 ```
 
 ### Smoke test models via Istio Gateway
@@ -347,7 +366,7 @@ curl -s localhost:8082/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
   | jq -r '.choices[0].message.content'
 
-# 2nd model
+#### 2nd model
 k -n llm-d port-forward svc/phi-4-mini-instruct-gateway-istio 8083:80
 
 # list served models
