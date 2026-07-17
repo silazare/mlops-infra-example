@@ -21,6 +21,8 @@ MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] JupyterHub — multi-user Jupyterhub
 - [x] Argo Workflows - CI for ML pipelines
 - [x] LLM-D stack — multi-model LLM inference (vLLM + EPP smart pod routing)
+- [x] LiteLLM — unified OpenAI API over the LLM-D model gateways
+
 
 ### Core Addons toggle
 Each core component is gated by an `enable_<addon>` flag in [terraform/main.tf](terraform/main.tf).
@@ -73,7 +75,7 @@ k -n traefik get svc traefik \
 Pick any one of the returned IPs and add:
 
 ```shell
-<IP>  argocd.local argo-workflows.local grafana.local jupyter.local
+<IP>  argocd.local argo-workflows.local grafana.local jupyter.local litellm.local
 ```
 
 ### 4. Retrieve ArgoCD admin password
@@ -375,5 +377,38 @@ curl -s localhost:8083/v1/models | jq
 # chat completion with SSE stream merge
 curl -s localhost:8083/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"microsoft/Phi-4-mini-instruct","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
+  | jq -r '.choices[0].message.content'
+```
+
+### Smoke test the unified API via LiteLLM
+
+OpenAI-compatible endpoint for all models — LiteLLM maps an alias (`qwen-0.5b`, `phi-4-mini`)
+to that model's Istio Gateway Service ([argocd/helm-values/litellm/values.yaml](argocd/helm-values/litellm/values.yaml)).
+
+```shell
+export LITELLM_KEY=sk-f46d79880b7d7125d3b503f6783a0380
+```
+
+```shell
+k -n llm-d port-forward svc/litellm 4000:4000
+
+# list model aliases
+curl -s localhost:4000/v1/models -H "Authorization: Bearer $LITELLM_KEY" | jq
+
+# both models through the SAME endpoint, switched by alias
+curl -s localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"qwen-0.5b","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
+  | jq -r '.choices[0].message.content'
+
+curl -s localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"phi-4-mini","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
+  | jq -r '.choices[0].message.content'
+
+# via the Traefik door (litellm.local in /etc/hosts -> Traefik NLB, like grafana.local)
+curl -s http://litellm.local/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"qwen-0.5b","messages":[{"role":"user","content":"Hello"}],"max_tokens":32}' \
   | jq -r '.choices[0].message.content'
 ```

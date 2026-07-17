@@ -1,6 +1,6 @@
 # Project Overview
 
-AWS EKS cluster bootstrap for ML/observability workloads, built on the same GitOps Bridge pattern as [argocd-infra-example](../argocd-infra-example/) but with a Mimir+Alloy+Loki+Grafana stack instead of kube-prometheus-stack, NVIDIA GPU Operator on Karpenter-provisioned GPU nodes, four Karpenter NodePools (CPU + GPU, AL2023 and Ubuntu), in-cluster image builds via BuildKit, a JupyterLab Argo Application synced manually from `mlops/`, a Piraeus/LINSTOR persistent-storage stack (DRBD9 replication + LVM-thin) running as a bare-metal-shaped POC on a dedicated managed node group plus diskless DRBD clients on the Karpenter `ubuntu` pool, an Istio service-mesh control plane (base + istiod) with the Gateway-API Inference Extension enabled, and an **llm-d LLM-inference stack** (vLLM + EPP KV-cache-aware pod routing, gated by `enable_llm_d`) — **two models (Qwen2.5-0.5B + Phi-4-mini) serving simultaneously, each behind its own Istio Gateway** with smart routing (M1+T6+T10); LiteLLM unified API still pending (T8).
+AWS EKS cluster bootstrap for ML/observability workloads, built on the same GitOps Bridge pattern as [argocd-infra-example](../argocd-infra-example/) but with a Mimir+Alloy+Loki+Grafana stack instead of kube-prometheus-stack, NVIDIA GPU Operator on Karpenter-provisioned GPU nodes, four Karpenter NodePools (CPU + GPU, AL2023 and Ubuntu), in-cluster image builds via BuildKit, a JupyterLab Argo Application synced manually from `mlops/`, a Piraeus/LINSTOR persistent-storage stack (DRBD9 replication + LVM-thin) running as a bare-metal-shaped POC on a dedicated managed node group plus diskless DRBD clients on the Karpenter `ubuntu` pool, an Istio service-mesh control plane (base + istiod) with the Gateway-API Inference Extension enabled, and an **llm-d LLM-inference stack** (vLLM + EPP KV-cache-aware pod routing, gated by `enable_llm_d`) — **two models (Qwen2.5-0.5B + Phi-4-mini) serving simultaneously, each behind its own Istio Gateway** with smart routing (M1+T6+T10); LiteLLM unified API authored (T8, chart `litellm-helm` 1.92.0, DB-less) — pending first sync + e2e verify (T9/M2).
 
 Cluster name is `mltest`, region `eu-west-1`, K8s `1.36` (control plane + AL2023 nodes). **Self-hosted Ubuntu nodes pin a separate `local.ubuntu_eks_version` (`1.35`)** because Canonical lags EKS on Ubuntu AMI publication — the `24.04/1.36` SSM path 404s until they ship it. kubelet 1.35 against API 1.36 is within version-skew policy; bump `ubuntu_eks_version` to match `cluster_version` once the SSM path resolves. Sandbox-grade — single-replica everywhere, non-production secrets in git, local TF state.
 
@@ -60,12 +60,14 @@ argocd/applications/              # GitOps — discovered recursively by the roo
     jupyterhub.yaml               # ApplicationSet, z2jh chart + $values; gated by enable_jupyterhub; auto-sync; ignoreDifferences on hub Secret + hub/proxy checksum annotations
     argo-workflows.yaml           # ApplicationSet, argo-workflows chart 1.0.14 + $values; gated by enable_argo_workflows; auto-sync; releaseName `argo`; CreateNamespace + ServerSideApply (CRDs)
     llm-d-recipe.yaml             # ApplicationSet, matrix(clusters{enable_llm_d} × list{models}); per model: router OCI Helm + $values + our llm-d-modelserver chart. ONE list entry = one model. See "llm-d inference"
+    litellm.yaml                  # ApplicationSet, gated enable_llm_d (wave 2, after the recipe); LiteLLM unified OpenAI API — chart OCI ghcr.io/berriai/litellm-helm + $values. See "llm-d inference"
 
 argocd/charts/                    # in-repo Helm charts (rendered by ArgoCD from a local path)
   llm-d-modelserver/              # our thin vLLM decode chart (Deployment + PVC + SA); replaces upstream Kustomize modelserver
 
 argocd/helm-values/               # static Helm values pulled via multi-source $values ref
   llm-d-router/values.yaml        # SHARED llm-d router/EPP values (merged upstream base+optimized-baseline @v0.8.1 + our `# OVERRIDE` deltas: EPP pin v0.9.0, sandbox trims)
+  litellm/values.yaml             # LiteLLM: model_list aliases -> per-model gateway cluster DNS (D1 Variant A), DB-less (deployStandalone+migrationJob off), masterkey hardcoded (sandbox; chart renders the Secret), Traefik ingress litellm.local
   traefik/values.yaml
   alb-controller/values.yaml
   mimir/values.yaml               # ingest-storage disabled, Kafka off, single replica everything
@@ -287,7 +289,7 @@ Multi-model LLM serving with **KV-cache-aware pod routing** (llm-d), gated by `e
 
 ### Two routing layers (only Layer 2 exists today)
 - **Layer 2 — pod selection (built):** within one model, Envoy calls the **EPP** (endpoint-picker) via ext-proc gRPC `:9002`; EPP scores vLLM decode pods (queue / kv-cache-utilization / prefix-cache / no-hit-lru, in-process, **no Redis**) and Envoy routes to the pick. Single-replica per model (sandbox), so cross-pod prefix routing is moot — the approximate in-EPP scorer suffices.
-- **Layer 1 — model selection (NOT built):** LiteLLM mapping an alias → per-model upstream (T8).
+- **Layer 1 — model selection (AUTHORED, not yet verified):** LiteLLM maps an alias (`qwen-0.5b` / `phi-4-mini`) → that model's gateway Service via cluster DNS (D1 Variant A). [litellm.yaml](argocd/applications/mlops/litellm.yaml) (wave 2) + [values.yaml](argocd/helm-values/litellm/values.yaml). **DB-less sandbox mode:** `db.deployStandalone: false` + `migrationJob.enabled: false` (chart defaults would pull bitnami Postgres + a Prisma migration Job). Master key **hardcoded in values** (sandbox — non-production secrets in git; the chart renders the `litellm-masterkey` Secret from it deterministically; leaving `masterkey` unset makes the chart autogenerate per render ⇒ ArgoCD drift; prod = `masterkeySecretName` + External Secrets). External door = chart-native Traefik Ingress `litellm.local`. Verify = T9 (M2/M3).
 
 ### Packaging (all-Helm, ArgoCD)
 Phase 0 (wave 0): `gateway-api-crds` (vendored Gateway-API + GAIE **v1.5** CRDs, SSA, gated `enable_llm_d`) + `cert-manager` (own gate `enable_cert_manager` — the router chart does NOT need it, EPP self-signs; kept for future TLS on LiteLLM/ALB). istiod carries `ENABLE_/SUPPORT_GATEWAY_API_INFERENCE_EXTENSION=true` (see Istio section) so a `Gateway`/InferencePool gets ext-proc wiring.

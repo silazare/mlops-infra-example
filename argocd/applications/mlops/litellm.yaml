@@ -1,0 +1,43 @@
+---
+# LiteLLM — unified OpenAI API over the llm-d model gateways
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: litellm
+  namespace: argocd
+spec:
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            enable_llm_d: "true"
+  template:
+    metadata:
+      name: litellm
+      annotations:
+        argocd.argoproj.io/sync-wave: "2"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      sources:
+        - repoURL: ghcr.io/berriai
+          chart: litellm-helm
+          targetRevision: 1.92.0
+          helm:
+            releaseName: litellm
+            valueFiles:
+              - $values/argocd/helm-values/litellm/values.yaml
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: "{{metadata.annotations.target_revision}}"
+          ref: values
+      destination:
+        server: "{{server}}"
+        namespace: llm-d
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

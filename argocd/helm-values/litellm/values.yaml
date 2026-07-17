@@ -1,0 +1,43 @@
+# LiteLLM — unified OpenAI-compatible API
+#
+# non-production - no database (master-key auth only, no virtual keys and spend tracking)
+db:
+  deployStandalone: false
+
+migrationJob:
+  enabled: false
+
+# Master key hardcoded for non-production only !!!
+masterkey: sk-f46d79880b7d7125d3b503f6783a0380
+
+proxy_config:
+  model_list:
+    # model after "openai/" must be the EXACT HF name — vLLM validates the request body
+    - model_name: qwen-0.5b
+      litellm_params:
+        model: openai/Qwen/Qwen2.5-0.5B-Instruct
+        api_base: http://qwen-qwen2-5-0-5b-instruct-gateway-istio.llm-d.svc.cluster.local:80/v1
+        api_key: "not-needed"
+    - model_name: phi-4-mini
+      litellm_params:
+        model: openai/microsoft/Phi-4-mini-instruct
+        api_base: http://phi-4-mini-instruct-gateway-istio.llm-d.svc.cluster.local:80/v1
+        api_key: "not-needed"
+  general_settings:
+    master_key: os.environ/PROXY_MASTER_KEY
+
+ingress:
+  enabled: true
+  className: traefik
+  hosts:
+    - host: litellm.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
