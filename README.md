@@ -390,25 +390,17 @@ export LITELLM_KEY=sk-f46d79880b7d7125d3b503f6783a0380
 ```
 
 ```shell
-k -n llm-d port-forward svc/litellm 4000:4000
-
 # list model aliases
-curl -s localhost:4000/v1/models -H "Authorization: Bearer $LITELLM_KEY" | jq
+curl -s http://litellm.local/v1/models -H "Authorization: Bearer $LITELLM_KEY" | jq
 
 # both models through the SAME endpoint, switched by alias
-curl -s localhost:4000/v1/chat/completions \
+curl -s http://litellm.local/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_KEY" -H 'Content-Type: application/json' \
   -d '{"model":"qwen-0.5b","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
   | jq -r '.choices[0].message.content'
 
-curl -s localhost:4000/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_KEY" -H 'Content-Type: application/json' \
-  -d '{"model":"phi-4-mini","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
-  | jq -r '.choices[0].message.content'
-
-# via the Traefik door (litellm.local in /etc/hosts -> Traefik NLB, like grafana.local)
 curl -s http://litellm.local/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_KEY" -H 'Content-Type: application/json' \
-  -d '{"model":"qwen-0.5b","messages":[{"role":"user","content":"Hello"}],"max_tokens":32}' \
+  -d '{"model":"phi-4-mini","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
   | jq -r '.choices[0].message.content'
 ```
