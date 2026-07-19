@@ -38,6 +38,9 @@ spec:
                   maxModelLen: "8192"
                   gpuMemUtil: "0.5"
                   hfTokenSecret: ""
+                  # weight-cache PVC is gp3 (RWO, single attach) — one per MODEL, not per pod.
+                  # user emptyDir instead
+                  modelCacheEnabled: "false"
                 - resourceName: phi-4-mini-instruct
                   model: microsoft/Phi-4-mini-instruct
                   modelLabel: Phi-4-mini-instruct
@@ -46,6 +49,7 @@ spec:
                   maxModelLen: "4096"
                   gpuMemUtil: "0.9"
                   hfTokenSecret: ""
+                  modelCacheEnabled: "true"
   template:
     metadata:
       name: "llm-d-recipe-{{ .resourceName }}"
@@ -101,6 +105,8 @@ spec:
               maxModelLen: {{ .maxModelLen }}
               gpuMemUtil: "{{ .gpuMemUtil }}"
               hfTokenSecret: "{{ .hfTokenSecret }}"
+              modelCache:
+                enabled: {{ .modelCacheEnabled }}
       destination:
         server: "{{ .server }}"
         namespace: llm-d
