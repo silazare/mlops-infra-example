@@ -13,7 +13,7 @@ router:
   epp:
     replicas: 1
     flags:
-      v: 2
+      v: 4
     # optimized-baseline scoring profile (was "default-plugins.yaml" in base)
     pluginsConfigFile: "optimized-baseline-plugins.yaml"
     pluginsCustomConfig:

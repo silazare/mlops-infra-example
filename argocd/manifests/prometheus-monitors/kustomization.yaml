@@ -7,5 +7,6 @@ namespace: monitoring
 resources:
   - llm-d-vllm-podmonitor.yaml
   - llm-d-epp-servicemonitor.yaml
+  - llm-d-epp-metrics-auth.yaml
   - istio-envoy-podmonitor.yaml
   - istiod-servicemonitor.yaml

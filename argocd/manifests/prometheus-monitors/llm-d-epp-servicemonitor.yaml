@@ -16,3 +16,9 @@ spec:
   endpoints:
     - port: http-metrics
       interval: 15s
+      # EPP /metrics is auth-protected
+      authorization:
+        type: Bearer
+        credentials:
+          name: llm-d-epp-metrics-reader-token
+          key: token
