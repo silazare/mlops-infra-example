@@ -33,7 +33,8 @@ spec:
                   model: Qwen/Qwen2.5-0.5B-Instruct
                   modelLabel: Qwen2.5-0.5B-Instruct
                   gpu: "1"
-                  replicas: "1"
+                  # 2 decode pods to exercise EPP cross-pod scoring
+                  replicas: "2"
                   maxModelLen: "8192"
                   gpuMemUtil: "0.5"
                   hfTokenSecret: ""

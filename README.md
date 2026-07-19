@@ -404,3 +404,34 @@ curl -s http://litellm.local/v1/chat/completions \
   -d '{"model":"phi-4-mini","messages":[{"role":"user","content":"Hello, who are you?"}],"max_tokens":64}' \
   | jq -r '.choices[0].message.content'
 ```
+
+### EPP smart routing test example for Qwen
+
+Qwen runs 2 decode pods (2 GPU nodes). The EPP prefix-cache scorer should stick
+prefix-sharing requests to the SAME pod (cache hits), while distinct prefixes spread
+by queue/kv-cache load. Metrics come from the `llm-d-vllm` PodMonitor + `llm-d-epp`
+
+```shell
+# long shared prefix — same system prompt every request, unique question at the tail
+PREFIX=$(python3 -c "print('You are a meticulous assistant. ' * 100)")
+
+# 1) warm-up + affinity check: 20 requests with the SAME prefix
+for i in $(seq 20); do
+  curl -s http://litellm.local/v1/chat/completions \
+    -H "Authorization: Bearer $LITELLM_KEY" -H 'Content-Type: application/json' \
+    -d "{\"model\":\"qwen-0.5b\",\"messages\":[{\"role\":\"system\",\"content\":\"$PREFIX\"},{\"role\":\"user\",\"content\":\"Question $i: what is $i+$i?\"}],\"max_tokens\":16}" > /dev/null
+done
+
+# 2) control group: 20 requests with RANDOM prefixes (no cache to hit)
+for i in $(seq 20); do
+  RAND=$(openssl rand -hex 32)
+  curl -s http://litellm.local/v1/chat/completions \
+    -H "Authorization: Bearer $LITELLM_KEY" -H 'Content-Type: application/json' \
+    -d "{\"model\":\"qwen-0.5b\",\"messages\":[{\"role\":\"system\",\"content\":\"$RAND\"},{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":16}" > /dev/null
+done
+
+# 3) which pod did EPP pick per request
+k -n llm-d logs deploy/qwen-qwen2-5-0-5b-instruct-epp -c epp --tail=200 | grep targetPod
+
+# 4) per-pod cache hits — group 1 should pile onto ONE pod, group 2 spread Grafana -> vLLM dashboard
+```

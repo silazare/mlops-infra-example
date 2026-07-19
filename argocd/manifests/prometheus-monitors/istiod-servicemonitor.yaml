@@ -1,0 +1,16 @@
+---
+# istiod control plane metrics (:15014 http-monitoring) — pilot pushes, sidecar sync
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istiod
+spec:
+  namespaceSelector:
+    matchNames:
+      - istio-system
+  selector:
+    matchLabels:
+      istio: pilot
+  endpoints:
+    - port: http-monitoring
+      interval: 15s

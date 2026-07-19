@@ -1,0 +1,18 @@
+---
+# llm-d EPP (endpoint-picker) — InferencePool queue/kv-cache averages, request durations,
+# scheduler plugin metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: llm-d-epp
+spec:
+  namespaceSelector:
+    matchNames:
+      - llm-d
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: Exists
+  endpoints:
+    - port: http-metrics
+      interval: 15s

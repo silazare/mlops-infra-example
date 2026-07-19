@@ -104,6 +104,23 @@ grafana:
         datasource:
           - name: DS_LOKI
             value: loki
+      # Official Istio dashboards
+      istio-mesh-7639:
+        gnetId: 7639
+        revision: 317
+        datasource: Prometheus
+      istio-service-7636:
+        gnetId: 7636
+        revision: 316
+        datasource: Prometheus
+      istio-workload-7630:
+        gnetId: 7630
+        revision: 317
+        datasource: Prometheus
+      istio-control-plane-7645:
+        gnetId: 7645
+        revision: 316
+        datasource: Prometheus
 
 prometheusOperator:
   admissionWebhooks:

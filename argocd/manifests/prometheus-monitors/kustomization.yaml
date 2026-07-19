@@ -1,0 +1,11 @@
+---
+# ServiceMonitors/PodMonitors for components outside the kube-prometheus-stack chart
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+
+resources:
+  - llm-d-vllm-podmonitor.yaml
+  - llm-d-epp-servicemonitor.yaml
+  - istio-envoy-podmonitor.yaml
+  - istiod-servicemonitor.yaml

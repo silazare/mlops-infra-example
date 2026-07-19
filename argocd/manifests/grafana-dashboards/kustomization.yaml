@@ -1,7 +1,5 @@
 ---
 # Grafana dashboards shipped as ConfigMaps — picked up by the kube-prometheus-stack
-# Grafana dashboard sidecar (watches label grafana_dashboard: "1", default-on in the chart).
-# Add a dashboard = drop a .json here + add a configMapGenerator entry.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: monitoring
@@ -15,3 +13,11 @@ configMapGenerator:
   - name: dashboard-nvidia-dcgm-exporter
     files:
       - nvidia-dcgm-exporter.json
+  # llm-d official: EPP / InferencePool view
+  - name: dashboard-llm-d-inference-gateway
+    files:
+      - llm-d-inference-gateway.json
+  # vLLM official: TTFT, TPOT, throughput, cache hit rate
+  - name: dashboard-vllm
+    files:
+      - vllm.json

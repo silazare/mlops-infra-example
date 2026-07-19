@@ -1,0 +1,17 @@
+---
+# vLLM decode pods — TTFT, TPOT, prefix-cache hits, KV-cache usage, queue depth
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: llm-d-vllm
+spec:
+  namespaceSelector:
+    matchNames:
+      - llm-d
+  selector:
+    matchLabels:
+      llm-d.ai/role: decode
+  podMetricsEndpoints:
+    - port: modelserver
+      path: /metrics
+      interval: 15s
