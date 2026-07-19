@@ -1,6 +1,5 @@
 ---
-# GAIE EPP protects /metrics with TokenReview + SubjectAccessReview:
-# scraping needs a bearer token
+# GAIE EPP protects /metrics with TokenReview + SubjectAccessReview - scraping needs a bearer token
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -36,3 +35,16 @@ subjects:
   - kind: ServiceAccount
     name: llm-d-epp-metrics-reader
     namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: llm-d-epp-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: Group
+    apiGroup: rbac.authorization.k8s.io
+    name: system:serviceaccounts:llm-d
