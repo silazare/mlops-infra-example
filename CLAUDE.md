@@ -79,6 +79,7 @@ argocd/helm-values/               # static Helm values pulled via multi-source $
 argocd/manifests/                 # raw manifests slot, Argo applies these directly
   jupyterlab-llm/                 # Namespace + Deployment + PVC + Service for JupyterLab on `ubuntu-gpu` NodePool
   nvidia-gpu-operator/            # ConfigMap dcgm-metrics-custom (custom dcgm-exporter metric set), applied via the gpu-operator ApplicationSet 3rd source
+  grafana-dashboards/             # Grafana dashboard JSONs -> ConfigMaps via kustomize configMapGenerator (label grafana_dashboard: "1", picked up by the kps Grafana sidecar); applied via the kube-prometheus-stack ApplicationSet 3rd source. Add a dashboard = json file + one generator entry
 
 mlops/                            # MLOps workloads — image build sources + smoke-test pods (NOT applied via GitOps)
   jupyterlab-llm/
