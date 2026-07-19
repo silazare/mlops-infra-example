@@ -1,0 +1,162 @@
+---
+kubelet:
+  enabled: true
+  namespace: kube-system
+  serviceMonitor:
+    cAdvisor: true # Enable container metrics
+    probes: true
+    resource: true
+    resourcePath: "/metrics/resource"
+    https: true # Critical for EKS
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    configReloaders: true
+    etcd: true
+    general: true
+    k8s: true
+    kubeApiserver: true
+    kubeApiserverAvailability: true
+    kubeApiserverSlos: false
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubeProxy: true
+    kubeScheduler: true
+    kubeStateMetrics: true
+    kubelet: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+global:
+  rbac:
+    create: true
+grafana:
+  ## This is not for production
+  adminPassword: prom-operator123!
+  deploymentStrategy:
+    type: Recreate
+  enabled: true
+  grafana.ini:
+    server:
+      domain: grafana.local
+      root_url: http://grafana.local/
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+    - grafana.local
+    path: /
+  persistence:
+    storageClassName: "gp3"
+    accessModes:
+    - ReadWriteOnce
+    enabled: true
+    size: 1Gi
+  plugins: []
+  sidecar:
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+      isDefaultDatasource: true
+      name: Prometheus
+      uid: prometheus
+  ## Configure additional grafana datasources (passed through tpl)
+  ## ref: http://docs.grafana.org/administration/provisioning/#datasources
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki-gateway.monitoring.svc.cluster.local/
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      loki-kubernetes-logs-15141:
+        gnetId: 15141
+        revision: 1
+        datasource:
+          - name: DS_LOKI
+            value: loki
+
+prometheusOperator:
+  admissionWebhooks:
+    enabled: true
+    patch:
+      enabled: true
+      securityContext:
+        fsGroup: 65534
+        runAsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 2000
+        seccompProfile:
+          type: RuntimeDefault
+alertmanager:
+  enabled: true
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - alertmanager.local
+    path: /
+  alertmanagerSpec:
+    logLevel: info
+    storage:
+     volumeClaimTemplate:
+       spec:
+         storageClassName: gp3
+         accessModes: ["ReadWriteOnce"]
+         resources:
+           requests:
+             storage: 1Gi
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+    - prometheus.local
+    path: /
+  prometheusSpec:
+    enableAdminAPI: true
+    logLevel: info
+    ## How long to retain Prometheus metrics
+    retention: 1d
+    ## Pick up ALL ServiceMonitors/PodMonitors/Rules cluster-wide, not only labelled release: kube-prometheus-stack
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+  additionalServiceMonitors: []

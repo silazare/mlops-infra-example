@@ -14,21 +14,28 @@ spec:
   template:
     metadata:
       name: loki
-      annotations:
-        argocd.argoproj.io/sync-wave: "1"
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       sources:
-        # Loki single-binary, filesystem storage. Logs are shipped by Alloy
+        # Loki Helm Chart
         - repoURL: https://grafana.github.io/helm-charts
           chart: loki
-          targetRevision: 6.55.0
+          targetRevision: 7.1.0
           helm:
             releaseName: loki
             valueFiles:
-              - $values/argocd/helm-values/loki/values.yaml
+              - $values/argocd/helm-values/grafana-loki/loki-values.yaml
+        # Promtail chart
+        - repoURL: https://grafana.github.io/helm-charts
+          chart: promtail
+          targetRevision: 6.17.1
+          helm:
+            releaseName: promtail
+            valueFiles:
+              - $values/argocd/helm-values/grafana-loki/promtail-values.yaml
+        # Git ref for $values lookups
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: "{{metadata.annotations.target_revision}}"
           ref: values

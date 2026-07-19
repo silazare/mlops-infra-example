@@ -18,5 +18,5 @@ pilot:
       memory: 256Mi
 
 meshConfig:
-  # envoy access logs to stdout > picked up by Alloy and Loki
+  # envoy access logs to stdout > picked up by Promtail and Loki
   accessLogFile: /dev/stdout

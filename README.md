@@ -12,7 +12,7 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 - [x] Traefik ingress controller
 - [x] AWS Load Balancer Controller (Helm release; IAM stays in TF)
 - [x] NVIDIA GPU Operator
-- [x] Grafana Mimir + Alloy for Monitoring
+- [x] Kube-prometheus-stack + Loki + Promtail for Monitoring
 - [x] Piraeus Operator for Linstor tests
 - [x] Istio for LLM inference smart routing
 

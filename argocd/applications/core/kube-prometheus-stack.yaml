@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: grafana
+  name: kube-prometheus-stack
   namespace: argocd
 spec:
   generators:
@@ -13,21 +13,21 @@ spec:
             enable_monitoring: "true"
   template:
     metadata:
-      name: grafana
-      annotations:
-        argocd.argoproj.io/sync-wave: "2"
+      name: kube-prometheus-stack
+      # Cascade-delete child resources when the ApplicationSet is removed
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       sources:
-        - repoURL: https://grafana.github.io/helm-charts
-          chart: grafana
-          targetRevision: 10.5.15
+        # Kube-prometheus-stack Helm Chart
+        - repoURL: https://prometheus-community.github.io/helm-charts
+          chart: kube-prometheus-stack
+          targetRevision: 87.17.0
           helm:
-            releaseName: grafana
             valueFiles:
-              - $values/argocd/helm-values/grafana/values.yaml
+              - $values/argocd/helm-values/kube-prometheus-stack/values.yaml
+        # Kube-prometheus-stack values from Git
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: "{{metadata.annotations.target_revision}}"
           ref: values
@@ -40,3 +40,4 @@ spec:
           selfHeal: true
         syncOptions:
           - CreateNamespace=true
+          - ServerSideApply=true

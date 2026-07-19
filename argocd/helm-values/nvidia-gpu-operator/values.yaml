@@ -40,6 +40,9 @@ dcgmExporter:
   # Custom metrics set
   config:
     name: dcgm-metrics-custom
+  # Scrape via kube-prometheus-stack
+  serviceMonitor:
+    enabled: true
 
 # Adds GPU-specific node labels
 gfd:

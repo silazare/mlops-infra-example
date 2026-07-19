@@ -15,11 +15,6 @@ resource "kubernetes_secret_v1" "argocd_in_cluster" {
       vpc_id          = module.vpc.vpc_id
       traefik_sg_id   = aws_security_group.ingress_traefik_external.id
       target_revision = local.argocd_target_revision
-
-      # Mimir S3 bucket names — consumed by argocd/applications/core/mimir.yaml
-      mimir_blocks_bucket       = aws_s3_bucket.mimir_blocks.id
-      mimir_alertmanager_bucket = aws_s3_bucket.mimir_alertmanager.id
-      mimir_ruler_bucket        = aws_s3_bucket.mimir_ruler.id
     }
   }
   data = {

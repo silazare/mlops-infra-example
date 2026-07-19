@@ -36,13 +36,12 @@ locals {
   # Core and MLOps layers addons
   # Set to false to skip an addon deployment on the cluster.
   enabled_addons = {
-    monitoring          = false # alloy + mimir + grafana + loki
+    monitoring          = true  # kube-prometheus-stack + loki + promtail
     linstor             = false # piraeus-operator + linstor-cluster
     alb_controller      = true
     traefik             = true
     nvidia_gpu_operator = true
     metrics_server      = true
-    kube_state_metrics  = true
     istio               = true
     cert_manager        = false
     llm_d               = true  # mlops layer - llm-d stack for inference setup

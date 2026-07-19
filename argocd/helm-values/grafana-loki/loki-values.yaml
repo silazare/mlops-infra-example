@@ -71,7 +71,7 @@ singleBinary:
     enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
     enabled: true
-    size: 5Gi
+    size: 10Gi
     storageClass: gp3
 
 # Zero out replica counts of other deployment modes
