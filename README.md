@@ -407,7 +407,7 @@ curl -s http://litellm.local/v1/chat/completions \
 
 ### EPP smart routing test example for Qwen
 
-Qwen runs 2 decode pods (2 GPU nodes). The EPP prefix-cache scorer should stick
+If Qwen runs 2 decode pods. The EPP prefix-cache scorer should stick
 prefix-sharing requests to the SAME pod (cache hits), while distinct prefixes spread
 by queue/kv-cache load. Metrics come from the `llm-d-vllm` PodMonitor + `llm-d-epp`
 
@@ -430,7 +430,16 @@ for i in $(seq 40); do
     -d "{\"model\":\"qwen-0.5b\",\"messages\":[{\"role\":\"system\",\"content\":\"$RAND\"},{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":16}"
 done
 
-# 3) which pod did EPP pick per request
-k -n llm-d logs deploy/qwen-qwen2-5-0-5b-instruct-epp -c epp --tail=300 \
-  | grep -iE "request handled|targetPod|endpoint" | tail -40
+# 3) Check which pod did EPP pick per request
+
+# distribution
+sum by (pod) (increase(vllm:request_success_total{model_name="Qwen/Qwen2.5-0.5B-Instruct"}[10m]))
+
+# hit rate
+sum by (pod) (rate(vllm:prefix_cache_hits_total[5m]))
+  /
+sum by (pod) (rate(vllm:prefix_cache_queries_total[5m]))
+
+# TTFT per pod
+histogram_quantile(0.95, sum by (pod, le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))
 ```
