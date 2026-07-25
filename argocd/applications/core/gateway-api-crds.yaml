@@ -5,6 +5,8 @@ metadata:
   name: gateway-api-crds
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -20,10 +22,10 @@ spec:
       project: default
       source:
         repoURL: https://github.com/silazare/mlops-infra-example
-        targetRevision: "{{metadata.annotations.target_revision}}"
+        targetRevision: '{{ index .metadata.annotations "target_revision" }}'
         path: argocd/manifests/gateway-api-crds
       destination:
-        server: "{{server}}"
+        server: "{{ .server }}"
         namespace: kube-system   # CRDs are cluster-scoped
       syncPolicy:
         automated:

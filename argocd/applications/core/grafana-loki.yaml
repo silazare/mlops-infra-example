@@ -5,6 +5,8 @@ metadata:
   name: loki
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -37,10 +39,10 @@ spec:
               - $values/argocd/helm-values/grafana-loki/promtail-values.yaml
         # Git ref for $values lookups
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
       destination:
-        server: "{{server}}"
+        server: "{{ .server }}"
         namespace: monitoring
       syncPolicy:
         automated:

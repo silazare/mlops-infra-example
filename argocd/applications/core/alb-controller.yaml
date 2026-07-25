@@ -5,6 +5,8 @@ metadata:
   name: alb-controller
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -21,19 +23,21 @@ spec:
       sources:
         - repoURL: https://aws.github.io/eks-charts
           chart: aws-load-balancer-controller
-          targetRevision: 1.11.0
+          targetRevision: 3.4.2
           helm:
+            # explicit: install chart CRDs
+            skipCrds: false
             valueFiles:
               - $values/argocd/helm-values/alb-controller/values.yaml
             values: |
-              clusterName: "{{metadata.annotations.cluster_name}}"
-              region: "{{metadata.annotations.region}}"
-              vpcId: "{{metadata.annotations.vpc_id}}"
+              clusterName: "{{ index .metadata.annotations "cluster_name" }}"
+              region: "{{ index .metadata.annotations "region" }}"
+              vpcId: "{{ index .metadata.annotations "vpc_id" }}"
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
       destination:
-        server: "{{server}}"
+        server: "{{ .server }}"
         namespace: kube-system
       # The chart generates a self-signed webhook cert via `genSelfSignedCert` every Helm render
       ignoreDifferences:
@@ -56,3 +60,4 @@ spec:
           selfHeal: true
         syncOptions:
           - RespectIgnoreDifferences=true
+          - ServerSideApply=true

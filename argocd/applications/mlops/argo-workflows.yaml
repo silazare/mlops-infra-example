@@ -5,6 +5,8 @@ metadata:
   name: argo-workflows
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -29,10 +31,10 @@ spec:
             valueFiles:
               - $values/argocd/helm-values/argo-workflows/values.yaml
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
       destination:
-        server: "{{server}}"
+        server: "{{ .server }}"
         namespace: argo
       syncPolicy:
         automated:

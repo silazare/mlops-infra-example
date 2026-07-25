@@ -5,6 +5,8 @@ metadata:
   name: nvidia-gpu-operator
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -29,14 +31,14 @@ spec:
             valueFiles:
               - $values/argocd/helm-values/nvidia-gpu-operator/values.yaml
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
         # dcgm-exporter custom metric ConfigMap (dcgm-metrics-custom)
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           path: argocd/manifests/nvidia-gpu-operator
       destination:
-        server: "{{server}}"
+        server: "{{ .server }}"
         namespace: gpu-operator
       syncPolicy:
         automated:

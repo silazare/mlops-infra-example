@@ -5,6 +5,8 @@ metadata:
   name: istio-base
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -26,7 +28,7 @@ spec:
             values: |
               defaultRevision: default
       destination:
-        server: "{{server}}"
+        server: "{{ .server }}"
         namespace: istio-system
       syncPolicy:
         automated:

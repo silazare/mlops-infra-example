@@ -112,7 +112,7 @@ BARE_PV_PLAN.md                   # Production-ready bare-metal rollout: 1â†’2â†
 
 ## GitOps Bridge contract
 
-Terraform writes a `kubernetes_secret` named `in-cluster` in the `argocd` namespace, labelled `argocd.argoproj.io/secret-type: cluster`. Its annotations carry per-cluster parameters consumed by ApplicationSets via `{{metadata.annotations.*}}` placeholders:
+Terraform writes a `kubernetes_secret` named `in-cluster` in the `argocd` namespace, labelled `argocd.argoproj.io/secret-type: cluster`. Its annotations carry per-cluster parameters consumed by ApplicationSets via Go-template placeholders `{{ index .metadata.annotations "*" }}` (all ApplicationSets set `goTemplate: true` + `goTemplateOptions: ["missingkey=error"]`):
 
 | Annotation | Source | Consumed by |
 |---|---|---|

@@ -5,6 +5,8 @@ metadata:
   name: traefik
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -28,12 +30,12 @@ spec:
             values: |
               service:
                 annotations:
-                  service.beta.kubernetes.io/aws-load-balancer-security-groups: "{{metadata.annotations.traefik_sg_id}}"
+                  service.beta.kubernetes.io/aws-load-balancer-security-groups: "{{ index .metadata.annotations "traefik_sg_id" }}"
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
       destination:
-        server: "{{server}}"
+        server: "{{ .server }}"
         namespace: traefik
       syncPolicy:
         automated:

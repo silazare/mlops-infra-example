@@ -5,6 +5,8 @@ metadata:
   name: kube-prometheus-stack
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -29,18 +31,18 @@ spec:
               - $values/argocd/helm-values/kube-prometheus-stack/values.yaml
         # Kube-prometheus-stack values from Git
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
         # Grafana dashboards as ConfigMaps (kustomize) — picked up by the dashboard sidecar
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           path: argocd/manifests/grafana-dashboards
         # ServiceMonitors/PodMonitors for out-of-chart components (vLLM, EPP, Istio)
         - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: "{{metadata.annotations.target_revision}}"
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           path: argocd/manifests/prometheus-monitors
       destination:
-        server: "{{server}}"
+        server: "{{ .server }}"
         namespace: monitoring
       syncPolicy:
         automated:
