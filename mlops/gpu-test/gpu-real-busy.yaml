@@ -1,0 +1,82 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: real-busy
+  namespace: llm-benchmark
+data:
+  real_busy.py: |
+    import torch
+    import time
+
+    device = torch.device('cuda:0')
+
+    # Large matrix multiplication
+    size = 8192
+    A = torch.randn(size, size, device=device)
+    B = torch.randn(size, size, device=device)
+
+    flops_per_matmul = 2 * size ** 3
+
+    start = time.time()
+    iterations = 0
+    last_report = start
+    last_iterations = 0
+    while time.time() - start < 300:
+        C = torch.matmul(A, B)
+        torch.cuda.synchronize()
+        iterations += 1
+        now = time.time()
+        if now - last_report >= 10:
+            done = iterations - last_iterations
+            window = now - last_report
+            free_b, total_b = torch.cuda.mem_get_info()
+            print(
+                f"[{now - start:8.1f}s] iters={iterations:,} "
+                f"matmul/s={done / window:.2f} "
+                f"tflops={done * flops_per_matmul / window / 1e12:.2f} "
+                f"alloc={torch.cuda.memory_allocated() / 1024**2:.1f}MiB "
+                f"reserved={torch.cuda.memory_reserved() / 1024**2:.1f}MiB "
+                f"max_alloc={torch.cuda.max_memory_allocated() / 1024**2:.1f}MiB "
+                f"fb_used={(total_b - free_b) / 1024**2:.0f}MiB "
+                f"fb_free={free_b / 1024**2:.0f}MiB "
+                f"fb_total={total_b / 1024**2:.0f}MiB",
+                flush=True,
+            )
+            last_report = now
+            last_iterations = iterations
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: real-busy
+  namespace: llm-benchmark
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw3-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: worker
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["python", "/app/real_busy.py"]
+      volumeMounts:
+        - name: app
+          mountPath: /app
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: 1
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: 1
+  volumes:
+    - name: app
+      configMap:
+        name: real-busy

@@ -1,0 +1,72 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fake-busy
+  namespace: llm-benchmark
+data:
+  fake_busy.py: |
+    import torch
+    import time
+
+    device = torch.device('cuda:0')
+
+    tiny_tensor = torch.ones(1, device=device)
+
+    # Launch many tiny kernels with occasional sync
+    start = time.time()
+    iterations = 0
+    while time.time() - start < 300:
+        # Microsecond-scale kernel
+        tiny_tensor = tiny_tensor + 1
+        iterations += 1
+        # Sync periodically to ensure work completes on the GPU
+        # and to stabilize what we observe
+        if iterations % 10000 == 0:
+            torch.cuda.synchronize()
+            free_b, total_b = torch.cuda.mem_get_info()
+            print(
+                f"[{time.time() - start:8.1f}s] iters={iterations:,} "
+                f"alloc={torch.cuda.memory_allocated() / 1024:.1f}KiB "
+                f"reserved={torch.cuda.memory_reserved() / 1024**2:.1f}MiB "
+                f"max_alloc={torch.cuda.max_memory_allocated() / 1024:.1f}KiB "
+                f"fb_used={(total_b - free_b) / 1024**2:.0f}MiB "
+                f"fb_free={free_b / 1024**2:.0f}MiB "
+                f"fb_total={total_b / 1024**2:.0f}MiB",
+                flush=True,
+            )
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fake-busy
+  namespace: llm-benchmark
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw3-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: worker
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["python", "/app/fake_busy.py"]
+      volumeMounts:
+        - name: app
+          mountPath: /app
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: 1
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: 1
+  volumes:
+    - name: app
+      configMap:
+        name: fake-busy
