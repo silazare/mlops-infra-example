@@ -61,6 +61,23 @@ resource "aws_security_group" "ingress_traefik_external" {
   )
 }
 
+// Shared backend SG for aws-load-balancer-controller
+resource "aws_security_group" "alb_backend" {
+  name        = "${local.name}-alb-backend"
+  description = "Shared backend SG managed by aws-load-balancer-controller"
+  vpc_id      = module.vpc.vpc_id
+
+  # The controller adds/removes rules at runtime
+  revoke_rules_on_delete = true
+
+  tags = merge(
+    local.tags,
+    {
+      Name = "${local.name}-alb-backend",
+    }
+  )
+}
+
 resource "aws_security_group" "ingress_traefik_node" {
   name        = "ingress-traefik-node"
   description = "Allow local HTTP and HTTPS traffic for Worker nodes"

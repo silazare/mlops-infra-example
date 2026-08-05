@@ -33,6 +33,7 @@ spec:
               clusterName: "{{ index .metadata.annotations "cluster_name" }}"
               region: "{{ index .metadata.annotations "region" }}"
               vpcId: "{{ index .metadata.annotations "vpc_id" }}"
+              backendSecurityGroup: "{{ index .metadata.annotations "alb_backend_sg_id" }}"
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values

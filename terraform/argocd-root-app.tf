@@ -10,11 +10,12 @@ resource "kubernetes_secret_v1" "argocd_in_cluster" {
       { for k, v in local.enabled_addons : "enable_${k}" => tostring(v) },
     )
     annotations = {
-      cluster_name    = module.eks.cluster_name
-      region          = local.region
-      vpc_id          = module.vpc.vpc_id
-      traefik_sg_id   = aws_security_group.ingress_traefik_external.id
-      target_revision = local.argocd_target_revision
+      cluster_name      = module.eks.cluster_name
+      region            = local.region
+      vpc_id            = module.vpc.vpc_id
+      traefik_sg_id     = aws_security_group.ingress_traefik_external.id
+      alb_backend_sg_id = aws_security_group.alb_backend.id
+      target_revision   = local.argocd_target_revision
     }
   }
   data = {
