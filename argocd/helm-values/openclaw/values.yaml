@@ -1,0 +1,524 @@
+# OpenClaw is NOT horizontally scalable: single replica, Recreate strategy, RWO PVC
+# Env secret `openclaw-env` is created out-of-band
+
+openclawVersion: "2026.9.2"
+chromiumVersion: "151.0.7922.109"
+# merge = keep runtime edits (device pairing, UI settings) on the PVC
+# overwrite = strict GitOps
+configMode: overwrite
+
+defaultPodOptions:
+  # Agent has shell access; never let it hold a token for the (public) kube API
+  automountServiceAccountToken: false
+  annotations:
+    # Blocks consolidation of the spot node under the single replica
+    karpenter.sh/do-not-disrupt: "true"
+  nodeSelector:
+    nodegroup: al2023
+  securityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+# Dedicated identity with zero RBAC — OpenClaw never calls the kube API.
+# Keeps the pod off the namespace `default` SA so nothing bound to it later leaks in.
+serviceAccount:
+  openclaw:
+    enabled: true
+
+controllers:
+  main:
+    replicas: 1
+    strategy: Recreate
+    serviceAccount:
+      identifier: openclaw
+
+    initContainers:
+      # Seeds /home/node/.openclaw/openclaw.json from the ConfigMap (merge or overwrite)
+      init-config:
+        image:
+          repository: ghcr.io/openclaw/openclaw
+          tag: "{{ .Values.openclawVersion }}"
+        command:
+          - sh
+          - -c
+          - |
+            log() { echo "[$(date -Iseconds)] [init-config] $*"; }
+
+            log "Starting config initialization"
+            mkdir -p /home/node/.openclaw
+            CONFIG_MODE="${CONFIG_MODE:-merge}"
+
+            if [ "$CONFIG_MODE" = "merge" ] && [ -f /home/node/.openclaw/openclaw.json ]; then
+              log "Mode: merge - merging Helm config with existing config"
+              if node -e "
+                const fs = require('fs');
+                // Strip JSON5 single-line comments while preserving // inside strings (e.g. URLs)
+                const stripComments = (s) => {
+                  let r = '', q = false, i = 0;
+                  while (i < s.length) {
+                    if (q) {
+                      if (s[i] === '\\\\') { r += s[i] + s[i+1]; i += 2; continue; }
+                      if (s[i] === '\"') q = false;
+                      r += s[i++];
+                    } else if (s[i] === '\"') {
+                      q = true; r += s[i++];
+                    } else if (s[i] === '/' && s[i+1] === '/') {
+                      while (i < s.length && s[i] !== '\n') i++;
+                    } else { r += s[i++]; }
+                  }
+                  return r;
+                };
+                let existing;
+                try {
+                  existing = JSON.parse(stripComments(fs.readFileSync('/home/node/.openclaw/openclaw.json', 'utf8')));
+                } catch (e) {
+                  console.error('[init-config] Warning: existing config is not valid JSON, will overwrite');
+                  process.exit(1);
+                }
+                const helm = JSON.parse(stripComments(fs.readFileSync('/config/openclaw.json', 'utf8')));
+                const deepMerge = (target, source) => {
+                  for (const key of Object.keys(source)) {
+                    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+                      target[key] = target[key] || {};
+                      deepMerge(target[key], source[key]);
+                    } else {
+                      target[key] = source[key];
+                    }
+                  }
+                  return target;
+                };
+                const merged = deepMerge(existing, helm);
+                fs.writeFileSync('/home/node/.openclaw/openclaw.json', JSON.stringify(merged, null, 2));
+              "; then
+                log "Config merged successfully"
+              else
+                log "WARNING: Merge failed (existing config may not be valid JSON), falling back to overwrite"
+                cp /config/openclaw.json /home/node/.openclaw/openclaw.json
+              fi
+            else
+              if [ ! -f /home/node/.openclaw/openclaw.json ]; then
+                log "Fresh install - writing initial config"
+              else
+                log "Mode: overwrite - replacing config with Helm values"
+              fi
+              cp /config/openclaw.json /home/node/.openclaw/openclaw.json
+            fi
+            log "Config initialization complete"
+        env:
+          CONFIG_MODE: '{{ .Values.configMode | default "merge" }}'
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+
+      # Installs ClawHub skills onto the PVC (idempotent)
+      # List is empty for the prototype; add slugs to `for skill in ...`
+      init-skills:
+        image:
+          repository: ghcr.io/openclaw/openclaw
+          tag: "{{ .Values.openclawVersion }}"
+        command:
+          - sh
+          - -c
+          - |
+            log() { echo "[$(date -Iseconds)] [init-skills] $*"; }
+
+            log "Starting skills initialization"
+            mkdir -p /home/node/.openclaw/workspace/skills
+            cd /home/node/.openclaw/workspace
+            install_skill() {
+              skill="$1"
+              SKILL_NAME="$(basename "$skill")"
+              if [ -z "$skill" ]; then
+                return 0
+              fi
+              if [ -d "skills/$SKILL_NAME" ]; then
+                log "Skill already installed: $skill"
+                return 0
+              fi
+              log "Installing skill: $skill"
+              attempts=6
+              delay=5
+              for i in $(seq 1 "$attempts"); do
+                if npx -y clawhub install "$skill" --no-input; then
+                  log "Installed skill: $skill"
+                  return 0
+                fi
+                jitter=$((RANDOM % 5))
+                if [ "$i" -lt "$attempts" ]; then
+                  log "WARNING: Failed to install skill: $skill (attempt $i/$attempts). Retrying in $((delay + jitter))s..."
+                  sleep $((delay + jitter))
+                  delay=$((delay * 2))
+                fi
+              done
+              log "WARNING: Failed to install skill after $attempts attempts: $skill"
+              return 1
+            }
+            for skill in ; do
+              install_skill "$skill" || true
+            done
+            log "Skills initialization complete"
+        env:
+          HOME: /tmp
+          NPM_CONFIG_CACHE: /tmp/.npm
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+
+    containers:
+      main:
+        image:
+          repository: ghcr.io/openclaw/openclaw
+          tag: "{{ .Values.openclawVersion }}"
+          pullPolicy: IfNotPresent
+        command:
+          - node
+          - dist/index.js
+        args:
+          - gateway
+          - --bind
+          - lan
+          - --port
+          - "18789"
+        envFrom:
+          - secretRef:
+              name: openclaw-env
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          # Agent writes to its HOME on the PVC
+          # root fs stays writable for npx/skill runtimes
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        probes:
+          liveness:
+            enabled: true
+            type: TCP
+            spec:
+              tcpSocket:
+                port: 18789
+              initialDelaySeconds: 30
+              periodSeconds: 30
+              timeoutSeconds: 5
+              failureThreshold: 3
+          readiness:
+            enabled: true
+            type: TCP
+            spec:
+              tcpSocket:
+                port: 18789
+              initialDelaySeconds: 10
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
+          startup:
+            enabled: true
+            type: TCP
+            spec:
+              tcpSocket:
+                port: 18789
+              initialDelaySeconds: 5
+              periodSeconds: 5
+              timeoutSeconds: 5
+              failureThreshold: 30
+
+      # Headless browser for the agent's browser tool (CDP on localhost:9222)
+      chromium:
+        enabled: true
+        image:
+          repository: chromedp/headless-shell
+          tag: "{{ .Values.chromiumVersion }}"
+        env:
+          # Fontconfig cache needs a writable directory
+          XDG_CACHE_HOME: /tmp
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        probes:
+          liveness:
+            enabled: true
+            custom: true
+            spec:
+              httpGet:
+                path: /json/version
+                port: 9222
+              initialDelaySeconds: 10
+              periodSeconds: 30
+              timeoutSeconds: 5
+              failureThreshold: 6
+          readiness:
+            enabled: true
+            custom: true
+            spec:
+              httpGet:
+                path: /json/version
+                port: 9222
+              initialDelaySeconds: 5
+              periodSeconds: 10
+          startup:
+            enabled: true
+            custom: true
+            spec:
+              httpGet:
+                path: /json/version
+                port: 9222
+              initialDelaySeconds: 5
+              periodSeconds: 5
+              timeoutSeconds: 5
+              failureThreshold: 12
+
+configMaps:
+  config:
+    enabled: true
+    data:
+      # Sourced by ~/.bashrc for interactive `kubectl exec` sessions
+      bash_aliases: |
+        alias openclaw='node /app/dist/index.js'
+      # JSON5; `${VAR}` values are resolved by OpenClaw from the `openclaw-env` Secret at runtime
+      openclaw.json: |
+        {
+          "gateway": {
+            "port": 18789,
+            "mode": "local",
+            "auth": {
+              "token": "${OPENCLAW_GATEWAY_TOKEN}"
+            },
+            "controlUi": {
+              // Browser origin of the Traefik host; required for any non-loopback bind
+              "allowedOrigins": ["http://openclaw.local"]
+            },
+            // Exact IPs only (no CIDR) — Traefik pod IPs are dynamic, so left empty
+            "trustedProxies": []
+          },
+
+          "agents": {
+            "defaults": {
+              "workspace": "/home/node/.openclaw/workspace",
+              "model": {
+                "primary": "anthropic/claude-sonnet-5"
+              },
+              "userTimezone": "Europe/London",
+              "timeoutSeconds": 600,
+              "maxConcurrent": 1
+            },
+            "list": [
+              {
+                "id": "main",
+                "default": true,
+                "identity": {
+                  "name": "mltest",
+                  "emoji": "🦞"
+                }
+              }
+            ]
+          },
+
+          "browser": {
+            "enabled": true,
+            "defaultProfile": "default",
+            "profiles": {
+              "default": {
+                "cdpUrl": "http://localhost:9222",
+                "color": "#4285F4"
+              }
+            }
+          },
+
+          "session": {
+            "scope": "per-sender",
+            "store": "/home/node/.openclaw/sessions",
+            "reset": {
+              "mode": "idle",
+              "idleMinutes": 60
+            }
+          },
+
+          "logging": {
+            "level": "info",
+            "consoleLevel": "info",
+            "consoleStyle": "compact",
+            "redactSensitive": "tools"
+          },
+
+          "tools": {
+            "profile": "full",
+            "web": {
+              "search": {
+                "enabled": true
+              },
+              "fetch": {
+                "enabled": true
+              }
+            }
+          },
+
+          // No messaging channels yet — Control UI only. Add e.g. telegram here later
+          // with TELEGRAM_BOT_TOKEN / TELEGRAM_ALLOW_FROM in the openclaw-env Secret.
+          "channels": {}
+        }
+
+service:
+  main:
+    controller: main
+    ipFamilyPolicy: SingleStack
+    ipFamilies:
+      - IPv4
+    ports:
+      http:
+        port: 18789
+
+ingress:
+  main:
+    enabled: true
+    className: traefik
+    hosts:
+      - host: openclaw.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              identifier: main
+              port: http
+
+persistence:
+  # ConfigMap source for init-config
+  config:
+    enabled: true
+    type: configMap
+    identifier: config
+    advancedMounts:
+      main:
+        init-config:
+          - path: /config
+            readOnly: true
+
+  bash-aliases:
+    enabled: true
+    type: configMap
+    identifier: config
+    advancedMounts:
+      main:
+        main:
+          - path: /home/node/.bash_aliases
+            subPath: bash_aliases
+            readOnly: true
+
+  # Agent state: config, sessions, workspace, installed skills
+  data:
+    enabled: true
+    type: persistentVolumeClaim
+    accessMode: ReadWriteOnce
+    storageClass: gp3
+    size: 10Gi
+    advancedMounts:
+      main:
+        init-config:
+          - path: /home/node/.openclaw
+        init-skills:
+          - path: /home/node/.openclaw
+        main:
+          - path: /home/node/.openclaw
+
+  # Writable /tmp for containers with readOnlyRootFilesystem
+  tmp:
+    enabled: true
+    type: emptyDir
+    advancedMounts:
+      main:
+        init-config:
+          - path: /tmp
+        init-skills:
+          - path: /tmp
+        main:
+          - path: /tmp
+        chromium:
+          - path: /tmp
+
+  # Chromium renderer shared memory
+  shm:
+    enabled: true
+    type: emptyDir
+    medium: Memory
+    sizeLimit: 1Gi
+    advancedMounts:
+      main:
+        chromium:
+          - path: /dev/shm
+
+networkpolicies:
+  main:
+    enabled: true
+    controller: main
+    policyTypes:
+      - Ingress
+      - Egress
+    rules:
+      ingress:
+        # Traefik is the only client of the gateway
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: traefik
+          ports:
+            - protocol: TCP
+              port: 18789
+      egress:
+        # kube-dns pods and the ClusterIP
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+              podSelector:
+                matchLabels:
+                  k8s-app: kube-dns
+            - ipBlock:
+                cidr: 172.20.0.10/32
+          ports:
+            - protocol: UDP
+              port: 53
+            - protocol: TCP
+              port: 53
+        - to:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+                except:
+                  - 10.0.0.0/8
+                  - 172.16.0.0/12
+                  - 192.168.0.0/16
+                  - 169.254.0.0/16
+                  - 100.64.0.0/10

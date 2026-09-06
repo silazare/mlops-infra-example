@@ -62,6 +62,10 @@ module "eks" {
       most_recent = true
       # Must exist before nodes join, otherwise kubelet never reports Ready
       before_compute = true
+      # Without the node agent NetworkPolicy objects are accepted but never enforced
+      configuration_values = jsonencode({
+        enableNetworkPolicy = "true"
+      })
     }
   }
 

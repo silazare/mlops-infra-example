@@ -22,6 +22,7 @@ MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] Argo Workflows - CI for ML pipelines
 - [x] LLM-D stack — multi-model LLM inference (vLLM + EPP smart pod routing)
 - [x] LiteLLM — unified OpenAI API over the LLM-D model gateways
+- [x] OpenClaw — autonomous AI agent (gateway + Chromium sidecar)
 
 
 ### Core Addons toggle
@@ -38,6 +39,7 @@ Flags are published as labels on the ArgoCD cluster Secret; each ApplicationSet 
 - [JupyterHub deployment](#jupyterhub-deployment)
 - [Argo Workflows deployment](#argo-workflows-deployment)
 - [LLM-D deployment](#llm-d-deployment)
+- [OpenClaw deployment](#openclaw-deployment)
 
 ## Deployment
 
@@ -75,7 +77,7 @@ k -n traefik get svc traefik \
 Pick any one of the returned IPs and add:
 
 ```shell
-<IP>  argocd.local argo-workflows.local grafana.local jupyter.local litellm.local
+<IP>  argocd.local argo-workflows.local grafana.local jupyter.local litellm.local openclaw.local
 ```
 
 ### 4. Retrieve ArgoCD admin password
@@ -442,4 +444,48 @@ sum by (pod) (rate(vllm:prefix_cache_queries_total[5m]))
 
 # TTFT per pod
 histogram_quantile(0.95, sum by (pod, le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))
+```
+
+## OpenClaw deployment
+
+Autonomous AI agent ([openclaw/openclaw](https://github.com/openclaw/openclaw)) — gateway + Control UI, shell/browser tools, optional messaging channels.
+
+| Component | What it is | Deploys |
+|---|---|---|
+| `init-config` | seeds `openclaw.json` (JSON5, from ConfigMap) onto the PVC; `configMode` merge/overwrite | init container |
+| `init-skills` | installs ClawHub skills onto the PVC (list empty by default) | init container |
+| `main` | OpenClaw gateway `:18789` (HTTP + WebSocket), reads secrets via `envFrom` | Deployment (1 replica, Recreate) + ClusterIP + Traefik Ingress `openclaw.local` |
+| `chromium` | headless browser for the browser tool, CDP `localhost:9222` | sidecar |
+| `data` | agent state — config, sessions, workspace, skills | 10Gi `gp3` RWO PVC at `/home/node/.openclaw` |
+
+OpenClaw does not scale horizontally, keep one replica.
+
+### 1. Create the env Secret
+
+```shell
+k create ns openclaw
+k -n openclaw create secret generic openclaw-env \
+  --from-literal=OPENCLAW_GATEWAY_TOKEN=$(openssl rand -hex 32) \
+  --from-literal=ANTHROPIC_API_KEY=sk-ant-xxx
+```
+
+### 2. Enable and sync
+
+### 3. Access and pair a device
+
+Open `http://openclaw.local`, paste the gateway token, click Connect, then approve the pairing request:
+
+```shell
+k -n openclaw exec deploy/openclaw -c main -- node dist/index.js devices list
+k -n openclaw exec deploy/openclaw -c main -- node dist/index.js devices approve <REQUEST_ID>
+
+# fallback without Traefik
+k -n openclaw port-forward svc/openclaw 18789:18789
+```
+
+### Smoke test
+
+```shell
+# egress to the LLM provider from inside the pod
+k -n openclaw exec deploy/openclaw -c main -- curl -sI https://api.anthropic.com
 ```

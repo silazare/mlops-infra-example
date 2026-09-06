@@ -36,8 +36,8 @@ locals {
   # Core and MLOps layers addons
   # Set to false to skip an addon deployment on the cluster.
   enabled_addons = {
-    monitoring          = true # kube-prometheus-stack + loki + promtail
-    linstor             = true # piraeus-operator + linstor-cluster
+    monitoring          = true  # kube-prometheus-stack + loki + promtail
+    linstor             = false # piraeus-operator + linstor-cluster
     alb_controller      = true
     traefik             = true
     nvidia_gpu_operator = true
@@ -48,5 +48,6 @@ locals {
     jupyterlab          = false # mlops layer
     jupyterhub          = false # mlops layer
     argo_workflows      = false # mlops layer
+    openclaw            = false # mlops layer
   }
 }

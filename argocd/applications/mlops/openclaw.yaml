@@ -1,0 +1,46 @@
+---
+# OpenClaw: single-instance AI agent (gateway + Chromium sidecar)
+# from the bjw-s app-template chart
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: openclaw
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            enable_openclaw: "true"
+  template:
+    metadata:
+      name: openclaw
+      annotations:
+        argocd.argoproj.io/sync-wave: "3"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      sources:
+        - repoURL: https://bjw-s-labs.github.io/helm-charts
+          chart: app-template
+          targetRevision: 4.6.2
+          helm:
+            releaseName: openclaw
+            valueFiles:
+              - $values/argocd/helm-values/openclaw/values.yaml
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
+          ref: values
+      destination:
+        server: "{{ .server }}"
+        namespace: openclaw
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
