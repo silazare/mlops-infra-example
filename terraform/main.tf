@@ -48,6 +48,6 @@ locals {
     jupyterlab          = false # mlops layer
     jupyterhub          = false # mlops layer
     argo_workflows      = false # mlops layer
-    openclaw            = false # mlops layer
+    openclaw            = true  # mlops layer
   }
 }
