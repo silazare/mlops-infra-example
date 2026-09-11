@@ -352,8 +352,7 @@ configMaps:
             "defaultProfile": "default",
             "profiles": {
               "default": {
-                "cdpUrl": "http://localhost:9222",
-                "color": "#4285F4"
+                "cdpUrl": "http://localhost:9222"
               }
             }
           },
@@ -370,8 +369,7 @@ configMaps:
           "logging": {
             "level": "info",
             "consoleLevel": "info",
-            "consoleStyle": "compact",
-            "redactSensitive": "tools"
+            "consoleStyle": "pretty"
           },
 
           "tools": {
