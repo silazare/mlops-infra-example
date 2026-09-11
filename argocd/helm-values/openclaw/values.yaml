@@ -323,9 +323,8 @@ configMaps:
               // Browser origin of the Traefik host; required for any non-loopback bind
               "allowedOrigins": ["http://openclaw.local"]
             },
-            // Traefik pods (dynamic IPs inside the VPC CIDR); without this every proxied
-            // request fails with proxy_attribution_required. Traefik overwrites X-Forwarded-For.
-            "trustedProxies": ["10.0.0.0/16"]
+            // Traefik pods live in the private subnets. Must NOT cover the NLB (public subnets)
+            "trustedProxies": ["10.0.0.0/20", "10.0.16.0/20", "10.0.32.0/20"]
           },
 
           "agents": {
