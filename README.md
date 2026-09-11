@@ -471,21 +471,17 @@ k -n openclaw create secret generic openclaw-env \
 
 ### 2. Enable and sync
 
-### 3. Access and pair a device
+### 3. Device pairing
 
-Open `http://openclaw.local`, paste the gateway token, click Connect, then approve the pairing request:
+Open `http://openclaw.local`, enter the gateway token in Settings, click **Connect**. Approve the pairing request from the pod:
 
 ```shell
+# gateway token
+k -n openclaw get secret openclaw-env -o jsonpath='{.data.OPENCLAW_GATEWAY_TOKEN}' | base64 -d; echo
+
+# list pending devices
 k -n openclaw exec deploy/openclaw -c main -- node dist/index.js devices list
+
+# approve the device
 k -n openclaw exec deploy/openclaw -c main -- node dist/index.js devices approve <REQUEST_ID>
-
-# fallback without Traefik
-k -n openclaw port-forward svc/openclaw 18789:18789
-```
-
-### Smoke test
-
-```shell
-# egress to the LLM provider from inside the pod
-k -n openclaw exec deploy/openclaw -c main -- curl -sI https://api.anthropic.com
 ```
