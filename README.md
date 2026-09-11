@@ -456,7 +456,7 @@ Autonomous AI agent ([openclaw/openclaw](https://github.com/openclaw/openclaw)) 
 | `init-skills` | installs ClawHub skills onto the PVC (list empty by default) | init container |
 | `main` | OpenClaw gateway `:18789` (HTTP + WebSocket), reads secrets via `envFrom` | Deployment (1 replica, Recreate) + ClusterIP + Traefik Ingress `openclaw.local` |
 | `chromium` | headless browser for the browser tool, CDP `localhost:9222` | sidecar |
-| `data` | agent state — config, sessions, workspace, skills | 10Gi `gp3` RWO PVC at `/home/node/.openclaw` |
+| `data` | agent state — config, sessions, workspace, skills | 10Gi `gp3` RWO PVC at `/home/node` (HOME, so `~/.openclaw` is owned by UID 1000, not by the root-owned volume root) |
 
 OpenClaw does not scale horizontally, keep one replica.
 

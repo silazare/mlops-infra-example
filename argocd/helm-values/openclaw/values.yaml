@@ -1,7 +1,8 @@
 # OpenClaw is NOT horizontally scalable: single replica, Recreate strategy, RWO PVC
 # Env secret `openclaw-env` is created out-of-band
 
-openclawVersion: "2026.9.2"
+# https://github.com/openclaw/openclaw/releases
+openclawVersion: "2026.9.4"
 chromiumVersion: "151.0.7922.109"
 # merge = keep runtime edits (device pairing, UI settings) on the PVC
 # overwrite = strict GitOps
@@ -336,16 +337,14 @@ configMaps:
               "timeoutSeconds": 600,
               "maxConcurrent": 1
             },
-            "list": [
-              {
-                "id": "main",
-                "default": true,
+            "entries": {
+              "main": {
                 "identity": {
                   "name": "mltest",
                   "emoji": "🦞"
                 }
               }
-            ]
+            }
           },
 
           "browser": {
@@ -438,7 +437,8 @@ persistence:
             subPath: bash_aliases
             readOnly: true
 
-  # Agent state: config, sessions, workspace, installed skills
+  # Agent state: config, sessions, workspace, installed skills.
+  # Mounted at HOME, not ~/.openclaw: the volume root is root-owned
   data:
     enabled: true
     type: persistentVolumeClaim
@@ -448,11 +448,11 @@ persistence:
     advancedMounts:
       main:
         init-config:
-          - path: /home/node/.openclaw
+          - path: /home/node
         init-skills:
-          - path: /home/node/.openclaw
+          - path: /home/node
         main:
-          - path: /home/node/.openclaw
+          - path: /home/node
 
   # Writable /tmp for containers with readOnlyRootFilesystem
   tmp:
