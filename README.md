@@ -460,13 +460,18 @@ Autonomous AI agent ([openclaw/openclaw](https://github.com/openclaw/openclaw)) 
 
 OpenClaw does not scale horizontally, keep one replica.
 
+Cluster access is **read-only**: SA `openclaw` is bound to the built-in `view` ClusterRole plus get/list on nodes, PVs, StorageClasses, metrics, Karpenter and ArgoCD CRDs. No Secrets, no exec, no writes. Prometheus and Loki are reachable over plain HTTP inside `monitoring`.
+
+Check the effective allowlist: `k -n openclaw exec deploy/openclaw -c main -- node dist/index.js approvals get`.
+
 ### 1. Create the env Secret
 
 ```shell
 k create ns openclaw
 k -n openclaw create secret generic openclaw-env \
   --from-literal=OPENCLAW_GATEWAY_TOKEN=$(openssl rand -hex 32) \
-  --from-literal=ANTHROPIC_API_KEY=sk-ant-xxx
+  --from-literal=ANTHROPIC_API_KEY=sk-ant-xxx \
+  --from-literal=TELEGRAM_BOT_TOKEN=placeholder
 ```
 
 ### 2. Enable and sync
