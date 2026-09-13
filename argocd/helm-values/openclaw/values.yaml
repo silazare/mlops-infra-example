@@ -160,6 +160,10 @@ controllers:
             log "Config initialization complete"
         env:
           CONFIG_MODE: '{{ .Values.configMode | default "merge" }}'
+        # The CLI validates the config (incl. ${VAR} references) before `approvals set`
+        envFrom:
+          - secretRef:
+              name: openclaw-env
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
@@ -552,6 +556,15 @@ configMaps:
             "level": "info",
             "consoleLevel": "info",
             "consoleStyle": "pretty"
+          },
+
+          // Key-free websearch provider
+          "plugins": {
+            "entries": {
+              "duckduckgo": {
+                "enabled": true
+              }
+            }
           },
 
           "tools": {
