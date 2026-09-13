@@ -22,7 +22,7 @@ MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] Argo Workflows - CI for ML pipelines
 - [x] LLM-D stack — multi-model LLM inference (vLLM + EPP smart pod routing)
 - [x] LiteLLM — unified OpenAI API over the LLM-D model gateways
-- [x] OpenClaw — autonomous AI agent (gateway + Chromium sidecar)
+- [x] OpenClaw — autonomous AI agent (cluster agent example)
 
 
 ### Core Addons toggle

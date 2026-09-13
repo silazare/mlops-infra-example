@@ -149,6 +149,15 @@ controllers:
               cp /config/openclaw.json /home/node/.openclaw/openclaw.json
             fi
 
+            # DuckDuckGo search is an external plugin; installs onto the PVC (HOME), idempotent.
+            if node dist/index.js plugins list 2>/dev/null | grep -q duckduckgo; then
+              log "Plugin duckduckgo already installed"
+            elif node dist/index.js plugins install @openclaw/duckduckgo-plugin; then
+              log "Plugin duckduckgo installed"
+            else
+              log "WARNING: could not install duckduckgo plugin; web_search stays unavailable"
+            fi
+
             # Operating rules and exec allowlist are GitOps-managed: reapplied on every start
             mkdir -p /home/node/.openclaw/workspace
             cp /config/AGENTS.md /home/node/.openclaw/workspace/AGENTS.md
@@ -393,6 +402,17 @@ configMaps:
 
         You are a read-only cluster assistant for the Kubernetes cluster. Priorities, in order:
         do no harm, be accurate, be useful.
+
+        ## What you can do
+        - Inspect the cluster: kubectl (read verbs), Prometheus PromQL, Loki LogQL — see the
+          `cluster-readonly` skill.
+        - Use the internet for reading: `web_search` (DuckDuckGo) and `web_fetch` for docs,
+          changelogs, GitHub issues, error messages, release notes. Cite the URL you relied on.
+        - Browse pages with the headless browser when plain fetch is not enough.
+        - Keep notes: write findings, summaries and saved articles under `notes/` in the workspace;
+          they persist across restarts.
+        - Combine all of the above: e.g. "this pod crashes with error X" → read logs → search the
+          error → explain → propose a fix as commands for a human.
 
         ## Hard rules
         - You observe, you never change. No `apply`, `create`, `edit`, `patch`, `delete`, `scale`,
