@@ -1,4 +1,5 @@
 ---
+# Traefik: default IngressClass behind the NLB (ALB controller), routes Ingress/IngressRoute to services
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -16,6 +17,8 @@ spec:
   template:
     metadata:
       name: traefik
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
       annotations:
         argocd.argoproj.io/sync-wave: "1"
     spec:
@@ -23,8 +26,10 @@ spec:
       sources:
         - repoURL: https://traefik.github.io/charts
           chart: traefik
-          targetRevision: 41.0.0
+          targetRevision: 41.5.0
           helm:
+            releaseName: traefik
+            skipCrds: false
             valueFiles:
               - $values/argocd/helm-values/traefik/values.yaml
             values: |
@@ -42,4 +47,5 @@ spec:
           prune: true
           selfHeal: true
         syncOptions:
+          - ServerSideApply=true
           - CreateNamespace=true
