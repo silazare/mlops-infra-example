@@ -1,4 +1,5 @@
 ---
+# LINSTOR cluster: DRBD storage cluster CR and StorageClasses on top of the piraeus-operator CRDs
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -40,12 +41,12 @@ spec:
         automated:
           prune: true
           selfHeal: true
-        retry:
-          limit: 5
-          backoff:
-            duration: 10s
-            factor: 2
-            maxDuration: 2m
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

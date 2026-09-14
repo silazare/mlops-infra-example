@@ -1,4 +1,5 @@
 ---
+# kube-prometheus-stack: Prometheus + Grafana, plus dashboards and monitors from argocd/manifests
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -27,6 +28,8 @@ spec:
           chart: kube-prometheus-stack
           targetRevision: 87.17.0
           helm:
+            releaseName: kube-prometheus-stack
+            skipCrds: false
             valueFiles:
               - $values/argocd/helm-values/kube-prometheus-stack/values.yaml
         # Kube-prometheus-stack values from Git
@@ -51,3 +54,9 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

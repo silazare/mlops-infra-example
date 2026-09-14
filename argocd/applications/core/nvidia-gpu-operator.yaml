@@ -1,4 +1,5 @@
 ---
+# NVIDIA GPU Operator: driver, device plugin and dcgm-exporter on GPU nodes
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -28,6 +29,7 @@ spec:
           targetRevision: v26.3.1
           helm:
             releaseName: gpu-operator
+            skipCrds: false
             valueFiles:
               - $values/argocd/helm-values/nvidia-gpu-operator/values.yaml
         - repoURL: https://github.com/silazare/mlops-infra-example
@@ -47,3 +49,9 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

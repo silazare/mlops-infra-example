@@ -1,4 +1,5 @@
 ---
+# Gateway API CRDs (standard channel) + Inference Extension CRDs for the llm-d stack on Istio
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -18,6 +19,8 @@ spec:
       name: gateway-api-crds
       annotations:
         argocd.argoproj.io/sync-wave: "0"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       source:
@@ -33,3 +36,9 @@ spec:
           selfHeal: true
         syncOptions:
           - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

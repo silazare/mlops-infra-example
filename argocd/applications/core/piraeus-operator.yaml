@@ -1,4 +1,5 @@
 ---
+# Piraeus Operator: LINSTOR/DRBD operator and its CRDs
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -57,3 +58,9 @@ spec:
           - CreateNamespace=true
           - ServerSideApply=true
           - RespectIgnoreDifferences=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

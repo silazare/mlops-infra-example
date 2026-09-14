@@ -1,4 +1,5 @@
 ---
+# cert-manager: X.509 certificate automation, off by default (enable_cert_manager)
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -18,6 +19,8 @@ spec:
       name: cert-manager
       annotations:
         argocd.argoproj.io/sync-wave: "0"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       sources:
@@ -25,6 +28,7 @@ spec:
           chart: cert-manager
           targetRevision: v1.20.2
           helm:
+            releaseName: cert-manager
             valueFiles:
               - $values/argocd/helm-values/cert-manager/values.yaml
         - repoURL: https://github.com/silazare/mlops-infra-example
@@ -40,3 +44,9 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

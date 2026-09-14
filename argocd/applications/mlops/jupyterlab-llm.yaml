@@ -1,4 +1,5 @@
 ---
+# JupyterLab: single GPU notebook pod from the in-cluster built image; manual sync, the image must exist before the first sync
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:

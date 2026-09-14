@@ -1,4 +1,5 @@
 ---
+# istiod: Istio control plane, programs the Gateways llm-d uses as internal ClusterIP edges
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -18,6 +19,8 @@ spec:
       name: istiod
       annotations:
         argocd.argoproj.io/sync-wave: "1"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       sources:
@@ -25,6 +28,7 @@ spec:
           chart: istiod
           targetRevision: 1.30.1
           helm:
+            releaseName: istiod
             valueFiles:
               - $values/argocd/helm-values/istiod/values.yaml
         - repoURL: https://github.com/silazare/mlops-infra-example
@@ -40,6 +44,12 @@ spec:
         syncOptions:
           - ServerSideApply=true
           - RespectIgnoreDifferences=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m
       ignoreDifferences:
         # istiod self-injects caBundle + toggles failurePolicy on its webhooks at runtime
         - group: admissionregistration.k8s.io

@@ -1,4 +1,5 @@
 ---
+# AWS Load Balancer Controller: provisions the NLB for the Traefik Service and ALB/NLB for Ingress/Service resources
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -18,6 +19,8 @@ spec:
       name: alb-controller
       annotations:
         argocd.argoproj.io/sync-wave: "0"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       sources:
@@ -25,6 +28,7 @@ spec:
           chart: aws-load-balancer-controller
           targetRevision: 3.4.2
           helm:
+            releaseName: alb-controller
             # explicit: install chart CRDs
             skipCrds: false
             valueFiles:
@@ -62,3 +66,9 @@ spec:
         syncOptions:
           - RespectIgnoreDifferences=true
           - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

@@ -1,4 +1,5 @@
 ---
+# Argo Workflows: in-cluster CI in namespace argo, pipelines deploy into target namespaces via RoleBindings
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -43,3 +44,9 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

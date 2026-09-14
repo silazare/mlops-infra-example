@@ -1,4 +1,5 @@
 ---
+# metrics-server: resource metrics API for HPA and kubectl top
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -18,6 +19,8 @@ spec:
       name: metrics-server
       annotations:
         argocd.argoproj.io/sync-wave: "0"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       sources:
@@ -25,6 +28,7 @@ spec:
           chart: metrics-server
           targetRevision: 3.13.0
           helm:
+            releaseName: metrics-server
             valueFiles:
               - $values/argocd/helm-values/metrics-server/values.yaml
         - repoURL: https://github.com/silazare/mlops-infra-example
@@ -37,3 +41,9 @@ spec:
         automated:
           prune: true
           selfHeal: true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

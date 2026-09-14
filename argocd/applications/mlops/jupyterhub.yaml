@@ -1,4 +1,5 @@
 ---
+# JupyterHub (z2jh): multi-user notebooks on the ubuntu pool, per-user gp3 PVCs, image x resource-tier profiles
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -65,3 +66,9 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - RespectIgnoreDifferences=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m
