@@ -1,0 +1,158 @@
+---
+apiVersion: "vault.banzaicloud.com/v1alpha1"
+kind: "Vault"
+metadata:
+  name: "vault"
+  namespace: "vault"
+spec:
+  size: 3
+  # image           — upstream HashiCorp Vault server, independent release cycle.
+  # bankVaultsImage — bank-vaults CLI (sidecar + Configurer Job) - init/unseal + applies externalConfig.
+  #                   Bump together with the vault-operator chart version as same upstream release.
+  image: docker.io/hashicorp/vault:2.1.1
+  # https://github.com/bank-vaults/bank-vaults/releases
+  # https://github.com/bank-vaults/vault-operator/blob/main/deploy/charts/vault-operator/values.yaml#L156
+  bankVaultsImage: ghcr.io/bank-vaults/bank-vaults:v1.33.2
+  # https://github.com/prometheus/statsd_exporter/releases
+  statsdImage: docker.io/prom/statsd-exporter:v0.31.0
+
+  # Specify the ServiceAccount where the Vault Pod and the Bank-Vaults configurer/unsealer is running
+  serviceAccount: vault
+
+  # Specify the Service's type where the Vault Service is exposed
+  serviceType: ClusterIP
+
+  # Traefik ingress, HTTP only (TLS disabled on the listener below)
+  ingress:
+    spec:
+      ingressClassName: traefik
+      rules:
+      - host: vault.local
+        http:
+          paths:
+          - pathType: Prefix
+            path: /
+            backend:
+              service:
+                name: vault
+                port:
+                  number: 8200
+
+  # Use local disk to store Vault file data, see config section.
+  volumes:
+    - name: vault-raft
+      persistentVolumeClaim:
+        claimName: vault-raft
+
+  volumeMounts:
+    - name: vault-raft
+      mountPath: /vault/raft
+
+  volumeClaimTemplates:
+    - metadata:
+        name: vault-raft
+      spec:
+        storageClassName: "gp3"
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+
+  # Describe where you would like to store the Vault unseal keys and root token.
+  unsealConfig:
+    options:
+      # The preFlightChecks flag enables unseal and root token storage tests
+      # This is true by default
+      preFlightChecks: true
+      # The storeRootToken flag enables storing of root token in chosen storage
+      # This is true by default
+      storeRootToken: true
+      # The secretShares represents the total number of unseal key shares
+      # This is 5 by default
+      secretShares: 5
+      # The secretThreshold represents the minimum number of shares required to reconstruct the unseal key
+      # This is 3 by default
+      secretThreshold: 3
+    kubernetes:
+      secretNamespace: vault
+
+  # A YAML representation of a final vault config file.
+  # See https://www.vaultproject.io/docs/configuration/ for more information.
+  config:
+    # Required mlock option since Vault 1.20
+    disable_mlock: true
+    storage:
+      raft:
+        path: "${ .Env.VAULT_STORAGE_FILE }" # An example how Vault config environment interpolation can be used
+    listener:
+      tcp:
+        address: "0.0.0.0:8200"
+        tls_disable: true
+    # telemetry:
+    #   statsd_address: localhost:9125
+    # api_addr is the redirect target for standby → active; must match the listener scheme and the vault namespace
+    api_addr: http://vault.vault:8200
+    # Raft cluster traffic (8201) always runs over Vault-managed TLS, scheme stays https regardless of tls_disable
+    cluster_addr: "https://${.Env.POD_NAME}:8201"
+    ui: true
+
+  # See: https://banzaicloud.com/docs/bank-vaults/cli-tool/#example-external-vault-configuration
+  # The repository also contains a lot examples in the test/deploy and operator/deploy directories.
+  externalConfig:
+    policies:
+      - name: allow_secrets
+        rules: path "secret/*" {
+          capabilities = ["create", "read", "update", "delete", "list"]
+          }
+
+    auth:
+      - type: kubernetes
+        roles:
+          # Allow every pod in the openclaw namespace to use the secret kv store
+          # Add 'vault.security.banzaicloud.io/vault-role: "openclaw"' annotation to resources to use this role
+          - name: openclaw
+            bound_service_account_names: ["*"]
+            bound_service_account_namespaces: ["openclaw"]
+            policies: ["allow_secrets"]
+            ttl: 1h
+
+          # Allow access for the vault secrets webhook
+          # Necessary to mutate secrets and configmaps
+          # Add 'vault.security.banzaicloud.io/vault-role: "vault-secrets-webhook"' annotation to resources to use this role
+          - name: vault-secrets-webhook
+            bound_service_account_names: ["vault-secrets-webhook"]
+            bound_service_account_namespaces: ["vault"]
+            policies: ["allow_secrets"]
+            ttl: 1h
+
+    secrets:
+      - path: secret
+        type: kv
+        description: General secrets.
+        options:
+          version: 2
+
+    # Allows writing some secrets to Vault (useful for development purposes).
+    # See https://www.vaultproject.io/docs/secrets/kv/index.html for more information.
+    # Placeholder values only — mirror of the out-of-band `openclaw-env` Secret (see README, OpenClaw deployment)
+    startupSecrets:
+      - type: kv
+        path: secret/data/openclaw/env
+        data:
+          data:
+            OPENCLAW_GATEWAY_TOKEN: "1234567890"
+            ANTHROPIC_API_KEY: sk-ant-12345
+            TELEGRAM_BOT_TOKEN: placeholder
+
+  secretInitsConfig:
+    - name: VAULT_LOG_LEVEL
+      value: info
+    - name: VAULT_STORAGE_FILE
+      value: "/vault/raft"
+
+  # Marks presence of Istio, which influences things like port namings
+  istioEnabled: false
+
+  # Enable service registration for HA
+  serviceRegistrationEnabled: true

@@ -44,6 +44,7 @@ locals {
     metrics_server      = true
     istio               = true
     cert_manager        = false
+    bank_vaults         = true  # vault-operator
     llm_d               = false # mlops layer - llm-d stack for inference setup
     jupyterlab          = false # mlops layer
     jupyterhub          = false # mlops layer

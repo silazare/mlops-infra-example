@@ -1,0 +1,90 @@
+---
+# bank-vaults: HashiCorp Vault managed by the Bank-Vaults operator (Vault CR) + secrets injection webhook
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: bank-vaults
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            enable_bank_vaults: "true"
+  template:
+    metadata:
+      name: bank-vaults
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      sources:
+        # https://bank-vaults.dev/docs/installing/
+        # vault-operator — watches Vault CR, reconciles StatefulSet + Configurer Job.
+        # Bump this chart together with bankVaultsImage in vault-cr.yaml
+        # https://github.com/bank-vaults/vault-operator/tree/main/deploy/charts/vault-operator
+        - chart: bank-vaults/helm-charts/vault-operator
+          repoURL: ghcr.io
+          targetRevision: 1.24.0
+          helm:
+            releaseName: vault-operator
+            valueFiles:
+              - $values/argocd/helm-values/bank-vaults/vault-operator-values.yaml
+        # vault-secrets-webhook — mutating admission webhook, injects secret-fetch
+        # https://github.com/bank-vaults/vault-secrets-webhook/tree/main/deploy/charts/vault-secrets-webhook
+        - chart: bank-vaults/helm-charts/vault-secrets-webhook
+          repoURL: ghcr.io
+          targetRevision: 1.23.1
+          helm:
+            releaseName: vault-secrets-webhook
+        # RBAC and the Vault CR
+        # Image versions for the Vault cluster are pinned inside vault-cr.yaml
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
+          path: argocd/manifests/bank-vaults
+        # Git ref used by the $values lookup in the vault-operator source
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
+          ref: values
+      destination:
+        server: "{{ .server }}"
+        namespace: vault
+      # vault-secrets-webhook chart generates a self-signed cert via genSelfSignedCert on every Helm render
+      ignoreDifferences:
+        - group: admissionregistration.k8s.io
+          kind: MutatingWebhookConfiguration
+          jqPathExpressions:
+            - .webhooks[]?.clientConfig.caBundle
+        - group: ""
+          kind: Secret
+          name: vault-secrets-webhook-webhook-tls
+          jsonPointers:
+            - /data
+        # The Deployment embeds sha256 of the Secret/ConfigMap as pod-template annotations
+        - group: apps
+          kind: Deployment
+          name: vault-secrets-webhook
+          jqPathExpressions:
+            - .spec.template.metadata.annotations."checksum/secret"
+            - .spec.template.metadata.annotations."checksum/config"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          # Vault CR is large and nested
+          # SSA avoids the last-applied-config annotation size limit
+          - ServerSideApply=true
+          - RespectIgnoreDifferences=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

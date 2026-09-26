@@ -1,0 +1,11 @@
+---
+operator:
+  enabled: true
+  metrics:
+    enabled: false
+unsealer:
+  enabled: true
+  kubernetes:
+    secretNamespace: vault
+    secretName: vault-unseal-keys
+    serviceAccount: default

@@ -15,6 +15,7 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 - [x] Kube-prometheus-stack + Loki + Promtail for Monitoring
 - [x] Piraeus Operator for Linstor tests
 - [x] Istio for LLM inference smart routing
+- [x] Hashicorp Vault + Bank Vaults Operator — secrets management
 
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):
 - [x] JupyterLab (CUDA/LLM) — image built in-cluster via BuildKit Job, deploy via manual-sync Argo Application
@@ -34,6 +35,7 @@ Flags are published as labels on the ArgoCD cluster Secret; each ApplicationSet 
 
 - [Deployment](#deployment)
 - [Delete infrastructure](#delete-infrastructure)
+- [Bank Vaults Operator](#bank-vaults-operator)
 - [JupyterLab example with GPU](#jupyterlab-example-with-gpu)
 - [Piraeus Operator tests for Linstor](#piraeus-operator-tests-for-linstor)
 - [JupyterHub deployment](#jupyterhub-deployment)
@@ -77,7 +79,7 @@ k -n traefik get svc traefik \
 Pick any one of the returned IPs and add:
 
 ```shell
-<IP>  argocd.local argo-workflows.local grafana.local jupyter.local litellm.local openclaw.local
+<IP>  argocd.local argo-workflows.local grafana.local jupyter.local litellm.local openclaw.local vault.local
 ```
 
 ### 4. Retrieve ArgoCD admin password
@@ -115,6 +117,49 @@ done
 terraform state rm helm_release.karpenter_crd
 
 terraform destroy
+```
+
+## Bank Vaults Operator
+
+Three independent pieces make up the stack (wired by the [bank-vaults ApplicationSet](argocd/applications/core/bank-vaults.yaml)):
+
+| Component | Source | Role |
+|---|---|---|
+| `vault-operator` | Helm chart, values in [argocd/helm-values/bank-vaults/](argocd/helm-values/bank-vaults/) | Kubernetes operator. Watches the `Vault` CR and reconciles the Vault StatefulSet + Configurer Job. |
+| `vault-secrets-webhook` | Helm chart | Mutating admission webhook. Injects a secret-fetch sidecar into pods annotated with `vault.security.banzaicloud.io/*`. Independent of the operator — works on its own. |
+| `Vault` CR | Manifest in [argocd/manifests/bank-vaults/](argocd/manifests/bank-vaults/) | Declarative spec of the Vault cluster itself (+ SA and RBAC). Read by the operator. |
+
+The `Vault` CR pins 2 container images:
+
+- `image: hashicorp/vault` — upstream HashiCorp Vault server. Independent release cycle.
+- `bankVaultsImage: bank-vaults/bank-vaults` — the bank-vaults CLI. Runs as sidecar in each Vault pod and as the Configurer Job. Handles init/unseal (keys stored in a K8s Secret) and applies everything under `externalConfig:` (policies, auth methods, secrets engines, `startupSecrets`) through the Vault API.
+
+### Important considerations
+
+- This setup is non-production, because unseal keys are stored in the same cluster and k8s secrets, consider KMS
+- The unseal keys and root token are managed by the Bank-Vaults operator.
+- There are 5 key shares created, with a threshold of 3 required to unseal Vault.
+- The unseal information is stored as Kubernetes Secrets in the "vault" namespace.
+- The secrets managed by Vault are stored in the Raft storage, which is persisted on the Kubernetes PersistentVolumes (`gp3`).
+- Each Vault pod will have its own PersistentVolume, and Raft ensures that the data is replicated across these volumes for high availability.
+
+### Access
+
+Wait until Vault will be synced.
+
+Login to Vault UI at `http://vault.local` and retrieve root token:
+```shell
+k -n vault get secret vault-unseal-keys -o jsonpath="{.data.vault-root}" | base64 -d
+```
+
+Login to Vault CLI:
+```shell
+export VAULT_ADDR=http://vault.local
+export VAULT_SKIP_VERIFY=true
+vault status
+
+export VAULT_TOKEN="xxxxx"
+vault kv get secret/openclaw/env
 ```
 
 ## JupyterLab example with GPU
