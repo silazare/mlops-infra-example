@@ -21,7 +21,7 @@ locals {
   }
 
   # Chart versions for helm_releases in the EKS layer
-  argocd_version    = "10.1.4"
+  argocd_version    = "10.9.2"
   karpenter_version = "1.14.0"
 
   # Git ref consumed by the root Application and propagated to all ApplicationSets

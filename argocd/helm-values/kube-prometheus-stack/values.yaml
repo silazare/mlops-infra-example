@@ -68,6 +68,8 @@ grafana:
     enabled: true
     size: 1Gi
   plugins: []
+  ## Drop the bundled kubernetes-mixin dashboards — replaced by dotdc/grafana-dashboards-kubernetes
+  defaultDashboardsEnabled: false
   sidecar:
     datasources:
       enabled: true
@@ -96,7 +98,47 @@ grafana:
           editable: true
           options:
             path: /var/lib/grafana/dashboards/default
+        ## https://github.com/dotdc/grafana-dashboards-kubernetes
+        - name: grafana-dashboards-kubernetes
+          orgId: 1
+          folder: Kubernetes
+          type: file
+          disableDeletion: true
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/grafana-dashboards-kubernetes
+        - name: istio
+          orgId: 1
+          folder: Istio
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/istio
   dashboards:
+    ## Pinned to a release tag
+    grafana-dashboards-kubernetes:
+      k8s-views-global:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/v3.0.8/dashboards/k8s-views-global.json
+        token: ''
+      k8s-views-namespaces:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/v3.0.8/dashboards/k8s-views-namespaces.json
+        token: ''
+      k8s-views-nodes:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/v3.0.8/dashboards/k8s-views-nodes.json
+        token: ''
+      k8s-views-pods:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/v3.0.8/dashboards/k8s-views-pods.json
+        token: ''
+      k8s-system-api-server:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/v3.0.8/dashboards/k8s-system-api-server.json
+        token: ''
+      k8s-system-coredns:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/v3.0.8/dashboards/k8s-system-coredns.json
+        token: ''
+      k8s-addons-prometheus:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/v3.0.8/dashboards/k8s-addons-prometheus.json
+        token: ''
     default:
       loki-kubernetes-logs-15141:
         gnetId: 15141
@@ -104,7 +146,8 @@ grafana:
         datasource:
           - name: DS_LOKI
             value: loki
-      # Official Istio dashboards
+    # Official Istio dashboards
+    istio:
       istio-mesh-7639:
         gnetId: 7639
         revision: 317

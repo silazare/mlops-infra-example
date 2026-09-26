@@ -1,7 +1,7 @@
 // ArgoCD Helm release
 resource "helm_release" "argocd" {
   name             = "argocd"
-  repository       = "https://argoproj.github.io/argo-helm"
+  repository       = "oci://ghcr.io/argoproj/argo-helm"
   chart            = "argo-cd"
   namespace        = "argocd"
   version          = local.argocd_version
