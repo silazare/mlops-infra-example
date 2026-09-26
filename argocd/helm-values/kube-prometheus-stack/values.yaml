@@ -115,6 +115,15 @@ grafana:
           editable: true
           options:
             path: /var/lib/grafana/dashboards/istio
+        ## Locally maintained JSONs from argocd/helm-values/kube-prometheus-stack/dashboards/
+        - name: mlops
+          orgId: 1
+          folder: MLOps
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/mlops
   dashboards:
     ## Pinned to a release tag
     grafana-dashboards-kubernetes:
@@ -164,6 +173,20 @@ grafana:
         gnetId: 7645
         revision: 316
         datasource: Prometheus
+    # Fetched from the repo by the download-dashboards init container
+    # No auto-sync need Grafana POD restart after change
+    mlops:
+      nvidia-dcgm-exporter:
+        url: https://raw.githubusercontent.com/silazare/mlops-infra-example/master/argocd/helm-values/kube-prometheus-stack/dashboards/nvidia-dcgm-exporter.json
+        token: ''
+      # llm-d official: EPP / InferencePool view
+      llm-d-inference-gateway:
+        url: https://raw.githubusercontent.com/silazare/mlops-infra-example/master/argocd/helm-values/kube-prometheus-stack/dashboards/llm-d-inference-gateway.json
+        token: ''
+      # vLLM official: TTFT, TPOT, throughput, cache hit rate
+      vllm:
+        url: https://raw.githubusercontent.com/silazare/mlops-infra-example/master/argocd/helm-values/kube-prometheus-stack/dashboards/vllm.json
+        token: ''
 
 prometheusOperator:
   admissionWebhooks:

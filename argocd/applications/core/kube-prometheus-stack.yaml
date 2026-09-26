@@ -36,10 +36,6 @@ spec:
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
-        # Grafana dashboards as ConfigMaps (kustomize) — picked up by the dashboard sidecar
-        - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
-          path: argocd/manifests/grafana-dashboards
         # ServiceMonitors/PodMonitors for out-of-chart components (vLLM, EPP, Istio)
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: '{{ index .metadata.annotations "target_revision" }}'
