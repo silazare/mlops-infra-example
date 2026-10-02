@@ -26,7 +26,7 @@ spec:
       sources:
         - repoURL: https://helm.ngc.nvidia.com/nvidia
           chart: gpu-operator
-          targetRevision: v26.3.1
+          targetRevision: v26.7.1
           helm:
             releaseName: gpu-operator
             skipCrds: false
@@ -49,6 +49,8 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+          # ClusterPolicy CR is mutated by the operator at runtime, diff it server-side
+          - ServerSideDiff=true
         retry:
           limit: 10
           backoff:

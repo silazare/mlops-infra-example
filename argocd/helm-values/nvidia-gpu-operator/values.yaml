@@ -4,7 +4,7 @@
 driver:
   enabled: true
   # https://catalog.ngc.nvidia.com/orgs/nvidia/containers/driver/tags
-  version: "580.126.20"
+  version: "595.91.07"
   repository: nvcr.io/nvidia
   image: driver
   # Compiles driver on the node from kernel-devel
@@ -37,12 +37,20 @@ sandboxWorkloads:
 
 dcgmExporter:
   enabled: true
-  # Custom metrics set
+  # Custom metrics set, ConfigMap from argocd/manifests/nvidia-gpu-operator/
   config:
     name: dcgm-metrics-custom
   # Scrape via kube-prometheus-stack
   serviceMonitor:
     enabled: true
+    interval: 30s
+    scrapeTimeout: 25s
+    relabelings:
+      # Kubernetes node name on every series (Hostname label is set by dcgm-exporter itself)
+      - sourceLabels:
+          - __meta_kubernetes_pod_node_name
+        targetLabel: node
+        action: replace
 
 # Adds GPU-specific node labels
 gfd:
