@@ -1,7 +1,7 @@
 // EKS cluster
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 21.24"
+  version = "~> 21.29"
 
   name               = local.name
   kubernetes_version = local.cluster_version
@@ -190,7 +190,7 @@ module "eks" {
 // Karpenter module
 module "karpenter" {
   source  = "terraform-aws-modules/eks/aws//modules/karpenter"
-  version = "~> 21.24"
+  version = "~> 21.29"
 
   cluster_name = module.eks.cluster_name
 

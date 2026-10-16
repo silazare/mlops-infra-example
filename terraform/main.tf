@@ -6,7 +6,7 @@ data "aws_partition" "current" {}
 
 locals {
   name            = "mltest"
-  cluster_version = "1.36"
+  cluster_version = "1.37"
   # self-hosted Ubuntu AMI publication — pin separately
   ubuntu_eks_version = "1.36"
   region             = "eu-west-1"
@@ -21,8 +21,8 @@ locals {
   }
 
   # Chart versions for helm_releases in the EKS layer
-  argocd_version    = "10.9.2"
-  karpenter_version = "1.14.0"
+  argocd_version    = "10.10.5"
+  karpenter_version = "1.15.0"
 
   # Git ref consumed by the root Application and propagated to all ApplicationSets
   argocd_target_revision = "master"
@@ -49,6 +49,6 @@ locals {
     jupyterlab          = false # mlops layer
     jupyterhub          = false # mlops layer
     argo_workflows      = false # mlops layer
-    openclaw            = true  # mlops layer
+    openclaw            = false # mlops layer
   }
 }
