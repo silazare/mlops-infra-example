@@ -167,21 +167,22 @@ vault kv get secret/openclaw/env
 https://medium.com/@sinan.ozel_23433/iac-for-generative-ai-llm-jupyterlab-on-kubernetes-a33d31841a27
 https://www.jimangel.io/posts/nvidia-rtx-gpu-kubernetes-setup/
 
-### 1. Build & push image — Argo Workflows `image-build`
 
-The image is built in-cluster by the reusable [image-build](mlops/argo-wf/templates/image-build.yaml) WorkflowTemplate
-(rootless BuildKit, layer cache in the `jupyterlab-llm-cache` ECR repo) — see [Argo Workflows deployment](#argo-workflows-deployment).
-Requires `enable_argo_workflows`.
+### Build image via Argo Workflows
+
+The image is built in-cluster by the reusable [image-build](mlops/argo-wf/templates/image-build.yaml) WorkflowTemplate.
 
 Pick a new tag, build + push, then bump the same tag in
 [argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml](argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml) (`image: ...:<NEW_TAG>`):
 
 ```shell
+k -n argo get wftmpl
 argo submit -n argo --watch --from wftmpl/image-build \
-  -p image=jupyterlab-llm -p tag=<NEW_TAG> -p context=mlops/jupyterlab-llm
+  -p image=jupyterlab-llm -p tag=25.01 -p context=mlops/jupyterlab-llm
+argo logs -n argo @latest
 ```
 
-### 2. Deploy via Argo manual sync
+### Deploy via ArgoCD manual sync
 
 Application is not auto-synced — image must exist in ECR before first sync. 
 Trigger sync manually:
@@ -265,7 +266,7 @@ Two independent flows — access vs data.
 
 ## Argo Workflows deployment
 
-Workflow engine for ML pipelines, used as an in-cluster CI that deploys Helm releases in order. Installed via ArgoCD ([argo/argo-workflows](https://github.com/argoproj/argo-helm) chart.
+Workflow engine for ML pipelines, used as an in-cluster CI that deploys Helm releases in order.
 
 | Component | What it is | Deploys |
 |---|---|---|
@@ -299,19 +300,6 @@ argo submit -n argo --serviceaccount argo-workflow --watch \
 # cross-ns Helm deploy
 argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml
 helm -n mlops-pipelines list
-```
-
-### Build an image
-
-`image-build` parameters: `image` (ECR repo name; `<image>-cache` must exist too — both in `local.ecr_repositories`),
-`tag`, `context` (path in this repo), optional `dockerfile-dir`, `repo`, `ref` (default `master`), `registry`, `aws-region`.
-The workflow outputs `image-ref` with the pushed reference.
-
-```shell
-k -n argo get wftmpl
-argo submit -n argo --watch --from wftmpl/image-build \
-  -p image=jupyterlab-llm -p tag=25.01 -p context=mlops/jupyterlab-llm
-argo logs -n argo @latest
 ```
 
 ## LLM-D deployment

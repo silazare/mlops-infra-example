@@ -9,21 +9,20 @@
 #     -p image=triton-py -p tag=26.09-1 -p context=mlops/triton/image
 #
 # Contract:
-#   - ECR repos <image> and <image>-cache must exist (terraform local.ecr_repositories).
-#   - SA argo-workflow has a Pod Identity association with ECR push (terraform/iam-argo-workflows.tf).
-#   - Layer cache is imported/exported to <registry>/<image>-cache (mode=max).
+#   - ECR repos <image> and <image>-cache must exist
+#   - SA argo-workflow has a Pod Identity association with ECR push
+#   - Layer cache is imported/exported to <registry>/<image>-cache (mode=max)
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
   name: image-build
   namespace: argo
   annotations:
-    # CRDs come from the same Application — land after them
+    # CRDs come from the same Application
     argocd.argoproj.io/sync-wave: "1"
 spec:
   entrypoint: build
   serviceAccountName: argo-workflow
-  # One build at a time per workflow; the whole thing must finish within an hour
   activeDeadlineSeconds: 3600
   arguments:
     parameters:
@@ -36,7 +35,7 @@ spec:
       # Dockerfile directory, relative to the repo root. Empty = same as context
       - name: dockerfile-dir
         value: ""
-      # ECR repository name (also used for the <image>-cache repo)
+      # ECR repository name
       - name: image
       - name: tag
       - name: registry
@@ -133,15 +132,13 @@ spec:
             value: --oci-worker-no-process-sandbox
           - name: DOCKER_CONFIG
             value: /home/user/.docker
-        # Overrides the chart's mainContainer defaults (RuntimeDefault seccomp, drop ALL caps,
-        # no privilege escalation): rootless BuildKit needs user-namespace syscalls (unconfined
-        # seccomp) and the setuid newuidmap/newgidmap helpers (privilege escalation allowed).
-        # Container-level SecurityContext takes precedence over the pod-level one.
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
           runAsGroup: 1000
           allowPrivilegeEscalation: true
+          capabilities:
+            add: [SETUID, SETGID]
           seccompProfile:
             type: Unconfined
         volumeMounts:

@@ -94,7 +94,8 @@ RUN pip3 install git+https://github.com/huggingface/transformers@919220dab1e29f4
 # RUN pip3 install flash-attn --no-build-isolation
 # RUN pip3 install flash-attn==2.7.4.post1 --no-build-isolation
 
-RUN pip3 install git+https://github.com/huggingface/peft.git
+# Pinned: peft main dropped Python 3.10 (requires >=3.11) — 0.14.0 is the release from the 25.01 era
+RUN pip3 install peft==0.14.0
 
 # Vector Database
 RUN pip3 install lancedb==0.13.0
