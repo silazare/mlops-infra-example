@@ -98,7 +98,7 @@ RUN pip3 install git+https://github.com/huggingface/transformers@919220dab1e29f4
 RUN pip3 install peft==0.14.0
 
 # Vector Database
-RUN pip3 install lancedb==0.13.0
+RUN pip3 install lancedb==0.16.0
 
 # Information Retrieval and RAG Components
 RUN pip3 install ir-measures==0.3.3 \
