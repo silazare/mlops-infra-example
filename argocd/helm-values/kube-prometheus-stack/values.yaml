@@ -179,6 +179,9 @@ grafana:
       nvidia-dcgm-exporter:
         url: https://raw.githubusercontent.com/silazare/mlops-infra-example/master/argocd/helm-values/kube-prometheus-stack/dashboards/nvidia-dcgm-exporter.json
         token: ''
+      nvidia-k8s-gpu-overview:
+        url: https://raw.githubusercontent.com/silazare/mlops-infra-example/master/argocd/helm-values/kube-prometheus-stack/dashboards/nvidia-k8s-gpu-overview.json
+        token: ''
       # llm-d official: EPP / InferencePool view
       llm-d-inference-gateway:
         url: https://raw.githubusercontent.com/silazare/mlops-infra-example/master/argocd/helm-values/kube-prometheus-stack/dashboards/llm-d-inference-gateway.json
