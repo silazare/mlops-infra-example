@@ -7,11 +7,6 @@ crds:
 # Namespaced controller - argo control-plane and workflows in ns argo
 singleNamespace: true
 
-# Common tag for all images
-images:
-  tag: v4.0.5
-  pullPolicy: IfNotPresent
-
 controller:
   replicas: 1
   parallelism: 5
