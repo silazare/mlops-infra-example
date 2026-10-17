@@ -1,0 +1,164 @@
+---
+# reusable in-cluster image build: git clone -> rootless BuildKit -> push to ECR
+#
+# Submit:
+#   argo submit -n argo --watch --from wftmpl/image-build \
+#     -p image=jupyterlab-llm -p tag=25.01 -p context=mlops/jupyterlab-llm
+#
+#   argo submit -n argo --watch --from wftmpl/image-build \
+#     -p image=triton-py -p tag=26.09-1 -p context=mlops/triton/image
+#
+# Contract:
+#   - ECR repos <image> and <image>-cache must exist (terraform local.ecr_repositories).
+#   - SA argo-workflow has a Pod Identity association with ECR push (terraform/iam-argo-workflows.tf).
+#   - Layer cache is imported/exported to <registry>/<image>-cache (mode=max).
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: image-build
+  namespace: argo
+  annotations:
+    # CRDs come from the same Application — land after them
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  entrypoint: build
+  serviceAccountName: argo-workflow
+  # One build at a time per workflow; the whole thing must finish within an hour
+  activeDeadlineSeconds: 3600
+  arguments:
+    parameters:
+      - name: repo
+        value: https://github.com/silazare/mlops-infra-example.git
+      - name: ref
+        value: master
+      # Build context, relative to the repo root
+      - name: context
+      # Dockerfile directory, relative to the repo root. Empty = same as context
+      - name: dockerfile-dir
+        value: ""
+      # ECR repository name (also used for the <image>-cache repo)
+      - name: image
+      - name: tag
+      - name: registry
+        value: 576087096890.dkr.ecr.eu-west-1.amazonaws.com
+      - name: aws-region
+        value: eu-west-1
+  volumes:
+    - name: workspace
+      emptyDir: {}
+    - name: docker-config
+      emptyDir: {}
+    - name: buildkit-cache
+      emptyDir:
+        sizeLimit: 30Gi
+  templates:
+    - name: build
+      inputs:
+        parameters:
+          - name: repo
+            value: "{{workflow.parameters.repo}}"
+          - name: ref
+            value: "{{workflow.parameters.ref}}"
+          - name: context
+            value: "{{workflow.parameters.context}}"
+          - name: dockerfile-dir
+            value: "{{workflow.parameters.dockerfile-dir}}"
+          - name: image
+            value: "{{workflow.parameters.image}}"
+          - name: tag
+            value: "{{workflow.parameters.tag}}"
+          - name: registry
+            value: "{{workflow.parameters.registry}}"
+          - name: aws-region
+            value: "{{workflow.parameters.aws-region}}"
+      outputs:
+        parameters:
+          # Full image reference that was pushed, for chaining into deploy steps
+          - name: image-ref
+            valueFrom:
+              path: /tmp/image-ref
+      # Init containers inherit the workflowDefaults pod securityContext (uid 1000, fsGroup 1000):
+      # emptyDir volumes are group-writable for fsGroup, so a non-root clone/login works.
+      initContainers:
+        - name: git-clone
+          image: alpine/git:v2.52.0
+          command: ["sh", "-ec"]
+          args:
+            - git clone --depth 1 --branch '{{inputs.parameters.ref}}' '{{inputs.parameters.repo}}' /workspace
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+        - name: ecr-login
+          # Credentials come from the Pod Identity association on SA argo-workflow
+          image: amazon/aws-cli:2.34.45
+          command: ["sh", "-ec"]
+          args:
+            - |
+              TOKEN=$(aws ecr get-login-password --region '{{inputs.parameters.aws-region}}')
+              cat > /docker-config/config.json <<EOF
+              {
+                "auths": {
+                  "{{inputs.parameters.registry}}": {
+                    "auth": "$(printf 'AWS:%s' "$TOKEN" | base64 -w0)"
+                  }
+                }
+              }
+              EOF
+          volumeMounts:
+            - name: docker-config
+              mountPath: /docker-config
+      container:
+        image: moby/buildkit:v0.29.0-rootless
+        command: ["sh", "-ec"]
+        args:
+          - |
+            CONTEXT="/workspace/{{inputs.parameters.context}}"
+            DOCKERFILE_DIR="/workspace/{{inputs.parameters.dockerfile-dir}}"
+            [ -n "{{inputs.parameters.dockerfile-dir}}" ] || DOCKERFILE_DIR="$CONTEXT"
+            IMAGE="{{inputs.parameters.registry}}/{{inputs.parameters.image}}:{{inputs.parameters.tag}}"
+            CACHE="{{inputs.parameters.registry}}/{{inputs.parameters.image}}-cache"
+
+            buildctl-daemonless.sh build \
+              --frontend=dockerfile.v0 \
+              --local=context="$CONTEXT" \
+              --local=dockerfile="$DOCKERFILE_DIR" \
+              --output=type=image,name="$IMAGE",push=true \
+              --import-cache=type=registry,ref="$CACHE" \
+              --export-cache=type=registry,ref="$CACHE",mode=max \
+              --progress=plain
+
+            printf '%s' "$IMAGE" > /tmp/image-ref
+        env:
+          - name: BUILDKITD_FLAGS
+            value: --oci-worker-no-process-sandbox
+          - name: DOCKER_CONFIG
+            value: /home/user/.docker
+        # Overrides the chart's mainContainer defaults (RuntimeDefault seccomp, drop ALL caps,
+        # no privilege escalation): rootless BuildKit needs user-namespace syscalls (unconfined
+        # seccomp) and the setuid newuidmap/newgidmap helpers (privilege escalation allowed).
+        # Container-level SecurityContext takes precedence over the pod-level one.
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: true
+          seccompProfile:
+            type: Unconfined
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+            readOnly: true
+          - name: docker-config
+            mountPath: /home/user/.docker
+            readOnly: true
+          - name: buildkit-cache
+            mountPath: /home/user/.local/share/buildkit
+        resources:
+          requests:
+            cpu: "4"
+            memory: "16Gi"
+            ephemeral-storage: "40Gi"
+          limits:
+            cpu: "4"
+            memory: "16Gi"
+            ephemeral-storage: "40Gi"

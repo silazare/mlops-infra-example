@@ -18,7 +18,7 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 - [x] Hashicorp Vault + Bank Vaults Operator — secrets management
 
 MLOps layer (ArgoCD at `argocd/applications/mlops/`):
-- [x] JupyterLab (CUDA/LLM) — image built in-cluster via BuildKit Job, deploy via manual-sync Argo Application
+- [x] JupyterLab (CUDA/LLM) — image built in-cluster by the Argo Workflows `image-build` template
 - [x] JupyterHub — multi-user Jupyterhub
 - [x] Argo Workflows - CI for ML pipelines
 - [x] LLM-D stack — multi-model LLM inference (vLLM + EPP smart pod routing)
@@ -167,17 +167,18 @@ vault kv get secret/openclaw/env
 https://medium.com/@sinan.ozel_23433/iac-for-generative-ai-llm-jupyterlab-on-kubernetes-a33d31841a27
 https://www.jimangel.io/posts/nvidia-rtx-gpu-kubernetes-setup/
 
-### 1. Build & push image — in-cluster with BuildKit rootless
+### 1. Build & push image — Argo Workflows `image-build`
 
-Build runs as a Job in `buildkit` namespace and pushes image, layer cache to `jupyterlab-llm-cache` repo. Update branch/tag inside `build-job.yaml` if needed.
+The image is built in-cluster by the reusable [image-build](mlops/argo-wf/templates/image-build.yaml) WorkflowTemplate
+(rootless BuildKit, layer cache in the `jupyterlab-llm-cache` ECR repo) — see [Argo Workflows deployment](#argo-workflows-deployment).
+Requires `enable_argo_workflows`.
 
-Edit the tag in files (keep them in sync), then build + push + sync:
-
-- [mlops/jupyterlab-llm/build-job.yaml](mlops/jupyterlab-llm/build-job.yaml) — `--output=...:<NEW_TAG>`
-- [argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml](argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml) — `image: ...:<NEW_TAG>`
+Pick a new tag, build + push, then bump the same tag in
+[argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml](argocd/manifests/jupyterlab-llm/jupyterlab-llm-pod.yaml) (`image: ...:<NEW_TAG>`):
 
 ```shell
-k replace --force -f mlops/jupyterlab-llm/build-job.yaml
+argo submit -n argo --watch --from wftmpl/image-build \
+  -p image=jupyterlab-llm -p tag=<NEW_TAG> -p context=mlops/jupyterlab-llm
 ```
 
 ### 2. Deploy via Argo manual sync
@@ -274,8 +275,9 @@ Workflow engine for ML pipelines, used as an in-cluster CI that deploys Helm rel
 | `workflow` SA + RBAC | identity step pods run as | SA `argo-workflow` + Role in ns `argo` |
 | `extraObjects` (UI) | UI login identity | SA `argo-ui` + long-lived token Secret + `RoleBinding` to `argo-argo-workflows-admin`, scoped to ns `argo` |
 | `extraObjects` (deploy) | cross-ns Helm deployer | `wf-helm-deployer` ClusterRole + `mlops-pipelines` Namespace + `argo-workflow-helm` RoleBinding (grants the workflow SA Helm rights in the target ns) |
+| `WorkflowTemplate`s | reusable build pipelines, delivered by the same Application from [mlops/argo-wf/templates/](mlops/argo-wf/templates/) | `image-build` — git clone → rootless BuildKit → push to ECR (Pod Identity on SA `argo-workflow`, [terraform/iam-argo-workflows.tf](terraform/iam-argo-workflows.tf)) |
 
-**Architecture:** control-plane and CI workflows both live in `argo`. Pipelines deploy into target namespaces (`mlops-pipelines`) via cross-namespace RBAC, not by running steps there — adding a target is one Namespace + one RoleBinding in `extraObjects`, no controller-scope change.
+**Architecture:** control-plane and CI workflows both live in `argo`. Pipelines deploy into target namespaces (`mlops-pipelines`) via cross-namespace RBAC, not by running steps there — adding a target is one Namespace + one RoleBinding in `extraObjects`, no controller-scope change. Image builds are workflows too: every image in this repo is built by `argo submit --from wftmpl/image-build`, there are no standalone build Jobs.
 
 ### Access
 
@@ -297,6 +299,19 @@ argo submit -n argo --serviceaccount argo-workflow --watch \
 # cross-ns Helm deploy
 argo submit -n argo --watch mlops/argo-wf/helm-deploy-test.yaml
 helm -n mlops-pipelines list
+```
+
+### Build an image
+
+`image-build` parameters: `image` (ECR repo name; `<image>-cache` must exist too — both in `local.ecr_repositories`),
+`tag`, `context` (path in this repo), optional `dockerfile-dir`, `repo`, `ref` (default `master`), `registry`, `aws-region`.
+The workflow outputs `image-ref` with the pushed reference.
+
+```shell
+k -n argo get wftmpl
+argo submit -n argo --watch --from wftmpl/image-build \
+  -p image=jupyterlab-llm -p tag=25.01 -p context=mlops/jupyterlab-llm
+argo logs -n argo @latest
 ```
 
 ## LLM-D deployment

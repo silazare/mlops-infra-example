@@ -27,7 +27,7 @@ locals {
   # Git ref consumed by the root Application and propagated to all ApplicationSets
   argocd_target_revision = "master"
 
-  # ECR repositories
+  # ECR repositories for Argo Workflows images build
   ecr_repositories = [
     "jupyterlab-llm",
     "jupyterlab-llm-cache",
@@ -48,7 +48,7 @@ locals {
     llm_d               = false # mlops layer - llm-d stack for inference setup
     jupyterlab          = false # mlops layer
     jupyterhub          = false # mlops layer
-    argo_workflows      = false # mlops layer
+    argo_workflows      = true  # mlops layer
     openclaw            = false # mlops layer
   }
 }
