@@ -29,8 +29,14 @@ locals {
 
   # ECR repositories for Argo Workflows images build
   ecr_repositories = [
+    # Jupyterlab images
     "jupyterlab-llm",
     "jupyterlab-llm-cache",
+    # Triton images
+    "triton-py",
+    "triton-py-cache",
+    "triton-ui",
+    "triton-ui-cache",
   ]
 
   # Core and MLOps layers addons

@@ -1,0 +1,59 @@
+---
+# GPU smoke test for the triton-gpu pool
+# Node joins with the GPU Operator driver, the image sees the GPU, TensorRT (trtexec) and
+# CTranslate2 (CUDA 12 libs via pip, preloaded with ctypes) work on top of the CUDA 13.4 image
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: triton
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: triton-gpu-check
+  namespace: triton
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: triton-gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: check
+      # Bump to the tag pushed by image-build
+      image: 576087096890.dkr.ecr.eu-west-1.amazonaws.com/triton-py:26.09-1
+      command: ["bash", "-ec"]
+      args:
+        - |
+          echo "== node =="; cat /proc/driver/nvidia/version 2>/dev/null || true
+          echo "== nvidia-smi =="; nvidia-smi
+          echo "== trtexec =="; trtexec --version 2>&1 | tail -2
+          echo "== tritonserver =="; tritonserver --version 2>&1 | head -1
+          echo "== ctranslate2 (cu12 libs preloaded) =="
+          python3 - <<'PY'
+          import ctypes, glob, os, site
+          # same preload the whisper model.py will do: satisfy libcublas.so.12 / libcudnn.so.9 from the pip wheels
+          for pat in ("nvidia/cublas/lib/libcublas.so.12", "nvidia/cublas/lib/libcublasLt.so.12",
+                      "nvidia/cudnn/lib/libcudnn.so.9", "nvidia/cudnn/lib/libcudnn_ops.so.9",
+                      "nvidia/cudnn/lib/libcudnn_cnn.so.9"):
+              hits = [p for d in site.getsitepackages() for p in glob.glob(os.path.join(d, pat))]
+              assert hits, f"missing {pat}"
+              ctypes.CDLL(hits[0], mode=ctypes.RTLD_GLOBAL)
+          import ctranslate2, faster_whisper
+          print("ctranslate2", ctranslate2.__version__, "cuda devices:", ctranslate2.get_cuda_device_count(),
+                "compute types:", sorted(ctranslate2.get_supported_compute_types("cuda")))
+          print("faster-whisper", faster_whisper.__version__)
+          PY
+          echo "== model-analyzer =="; model-analyzer --version 2>&1 | tail -1
+          echo "== OK =="
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+          nvidia.com/gpu: "1"
