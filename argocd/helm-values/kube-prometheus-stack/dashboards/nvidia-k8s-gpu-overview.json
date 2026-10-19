@@ -59,10 +59,10 @@
         "name": "node_regex",
         "label": "k8s nodes",
         "type": "constant",
-        "query": "kw[0-9]+-c205",
+        "query": ".*",
         "current": {
-          "text": "kw[0-9]+-c205",
-          "value": "kw[0-9]+-c205"
+          "text": ".*",
+          "value": ".*"
         },
         "hide": 2,
         "skipUrlSync": true,

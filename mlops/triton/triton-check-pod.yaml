@@ -29,8 +29,9 @@ spec:
         - |
           echo "== node =="; cat /proc/driver/nvidia/version 2>/dev/null || true
           echo "== nvidia-smi =="; nvidia-smi
-          echo "== trtexec =="; trtexec --version 2>&1 | tail -2
-          echo "== tritonserver =="; tritonserver --version 2>&1 | head -1
+          # trtexec has no --version flag; it prints its TensorRT build on any run
+          echo "== trtexec =="; trtexec 2>&1 | grep -m1 -oE 'TensorRT v[0-9]+' || true
+          echo "== tritonserver =="; cat /opt/tritonserver/TRITON_VERSION
           echo "== ctranslate2 (cu12 libs preloaded) =="
           python3 - <<'PY'
           import ctypes, glob, os, site

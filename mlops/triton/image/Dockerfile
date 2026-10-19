@@ -32,5 +32,3 @@ RUN pip install triton-model-analyzer==1.58.0
 
 # Model repository mount point (RWX PVC or S3-synced copy)
 RUN mkdir -p /models
-
-# Same entrypoint as the base image: tritonserver flags come from the chart (serverArgs)
