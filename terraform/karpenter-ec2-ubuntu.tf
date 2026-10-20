@@ -211,12 +211,12 @@ spec:
       labels:
         nodegroup: ubuntu-gpu
         # DRA pool: GPU Operator removes the device plugin from these nodes,
-        # nvidia.com/gpu.deploy.device-plugin: "false"
-        # nvidia.com/dra-kubelet-plugin: "true"
+        nvidia.com/gpu.deploy.device-plugin: "false"
+        nvidia.com/dra-kubelet-plugin: "true"
         # Operator restarts pods selected by this label on driver upgrades / MIG changes
-        # nvidia.com/gpu.deploy.client: "true"
+        nvidia.com/gpu.deploy.client: "true"
         # Karpenter DRA (settings.awsFeatureGates.draNVIDIAGPU)
-        # nvidia.com/gpu.present: "true"
+        nvidia.com/gpu.present: "true"
     spec:
       taints:
       # Block non-GPU pods; only workloads with the matching toleration land here.
