@@ -210,6 +210,13 @@ spec:
     metadata:
       labels:
         nodegroup: ubuntu-gpu
+        # DRA pool: GPU Operator removes the device plugin from these nodes,
+        # nvidia.com/gpu.deploy.device-plugin: "false"
+        # nvidia.com/dra-kubelet-plugin: "true"
+        # Operator restarts pods selected by this label on driver upgrades / MIG changes
+        # nvidia.com/gpu.deploy.client: "true"
+        # Karpenter DRA (settings.awsFeatureGates.draNVIDIAGPU)
+        # nvidia.com/gpu.present: "true"
     spec:
       taints:
       # Block non-GPU pods; only workloads with the matching toleration land here.
@@ -241,6 +248,127 @@ EOF
     helm_release.karpenter_crd,
     helm_release.karpenter,
     kubectl_manifest.karpenter_ec2nodeclass_ubuntu_gpu
+  ]
+}
+
+// Ubuntu EC2NodeClass and NodePool for Dynamic MIG via DRA
+data "cloudinit_config" "ubuntu_gpu_mig_node" {
+  base64_encode = false
+  gzip          = false
+  boundary      = "//"
+
+  part {
+    content_type = "text/x-shellscript"
+    content      = <<-EOT
+      #!/bin/bash
+      set -ex
+
+      /etc/eks/bootstrap.sh ${module.eks.cluster_name} \
+        --b64-cluster-ca ${module.eks.cluster_certificate_authority_data} \
+        --apiserver-endpoint ${module.eks.cluster_endpoint} \
+        --kubelet-extra-args "--node-labels=nodegroup=ubuntu-gpu-mig --register-with-taints=nvidia.com/gpu=true:NoSchedule"
+    EOT
+  }
+}
+
+resource "kubectl_manifest" "karpenter_ec2nodeclass_ubuntu_gpu_mig" {
+  yaml_body = <<EOF
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: ubuntu-gpu-mig
+spec:
+  amiFamily: Custom
+  amiSelectorTerms:
+    - id: ${data.aws_ssm_parameter.ubuntu_eks_ami.value}
+  role: ${module.karpenter.node_iam_role_name}
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${local.name}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${local.name}
+  blockDeviceMappings:
+    - deviceName: /dev/sda1
+      ebs:
+        # LLM weights for the MIG-slice tests (M10) land on the root volume
+        volumeSize: 200Gi
+        volumeType: gp3
+        encrypted: true
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    httpPutResponseHopLimit: 2
+    httpTokens: required
+  userData: |
+    ${indent(4, data.cloudinit_config.ubuntu_gpu_mig_node.rendered)}
+  tags:
+    karpenter.sh/discovery: ${local.name}
+    CostCenter: ${local.name}
+    ebs.csi.aws.com/cluster-name: ${local.name}
+EOF
+
+  depends_on = [
+    helm_release.karpenter_crd,
+    helm_release.karpenter
+  ]
+}
+
+resource "kubectl_manifest" "karpenter_nodepool_ubuntu_gpu_mig" {
+  yaml_body = <<EOF
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: ubuntu-gpu-mig
+spec:
+  disruption:
+    budgets:
+      - nodes: 10%
+    consolidateAfter: 10m
+    consolidationPolicy: WhenEmpty
+  limits:
+    nvidia.com/gpu: "1"
+  template:
+    metadata:
+      labels:
+        nodegroup: ubuntu-gpu-mig
+        # DRA switches
+        nvidia.com/gpu.deploy.device-plugin: "false"
+        nvidia.com/dra-kubelet-plugin: "true"
+        # Operator restarts pods selected by this label on driver upgrades / MIG changes
+        nvidia.com/gpu.deploy.client: "true"
+        # Karpenter DRA (settings.awsFeatureGates.draNVIDIAGPU)
+        nvidia.com/gpu.present: "true"
+    spec:
+      taints:
+        - key: nvidia.com/gpu
+          value: "true"
+          effect: NoSchedule
+      expireAfter: 24h
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: ubuntu-gpu-mig
+      requirements:
+        # Hopper only: MIG mode is enabled on the fly by the DRA driver
+        - key: "node.kubernetes.io/instance-type"
+          operator: In
+          values: ["p5.4xlarge"]
+        - key: "kubernetes.io/arch"
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: "karpenter.sh/capacity-type"
+          operator: In
+          values: ["spot", "on-demand"]
+EOF
+
+  depends_on = [
+    helm_release.karpenter_crd,
+    helm_release.karpenter,
+    kubectl_manifest.karpenter_ec2nodeclass_ubuntu_gpu_mig
   ]
 }
 

@@ -37,6 +37,9 @@ resource "helm_release" "karpenter" {
       clusterName: ${module.eks.cluster_name}
       clusterEndpoint: ${module.eks.cluster_endpoint}
       interruptionQueue: ${module.karpenter.queue_name}
+      # DRA (alpha): size new nodes for gpu.nvidia.com ResourceClaims
+      awsFeatureGates:
+        draNVIDIAGPU: true
     EOT
   ]
 

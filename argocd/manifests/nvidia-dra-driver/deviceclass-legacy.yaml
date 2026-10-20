@@ -1,0 +1,13 @@
+---
+# Legacy bridge: pods that still request `resources.limits.nvidia.com/gpu: N` get scheduled onto DRA nodes
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: nvidia.com-gpu-legacy
+spec:
+  extendedResourceName: nvidia.com/gpu
+  selectors:
+    - cel:
+        expression: >-
+          device.driver == "gpu.nvidia.com" &&
+          device.attributes["gpu.nvidia.com"].type == "gpu"

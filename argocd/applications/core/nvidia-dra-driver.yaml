@@ -1,0 +1,57 @@
+---
+# NVIDIA DRA driver for GPUs: Dynamic Resource Allocation next to the GPU Operator
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nvidia-dra-driver
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
+            enable_nvidia_gpu_operator: "true"
+  template:
+    metadata:
+      name: nvidia-dra-driver
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      sources:
+        # This is the same v0.5.1 the Operator 26.7.2 ships for GPUCluster
+        - repoURL: registry.k8s.io/dra-driver-nvidia/charts
+          chart: dra-driver-nvidia-gpu
+          targetRevision: 0.5.1
+          helm:
+            releaseName: dra-driver-nvidia-gpu
+            valueFiles:
+              - $values/argocd/helm-values/nvidia-dra-driver/values.yaml
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
+          ref: values
+        # DeviceClass bridging the legacy nvidia.com/gpu extended resource onto DRA
+        - repoURL: https://github.com/silazare/mlops-infra-example
+          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
+          path: argocd/manifests/nvidia-dra-driver
+      destination:
+        server: "{{ .server }}"
+        namespace: dra-driver-nvidia-gpu
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

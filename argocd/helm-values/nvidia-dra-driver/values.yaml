@@ -1,0 +1,33 @@
+# Required: the GPU kubelet plugin is off by default in the chart
+gpuResourcesEnabledOverride: true
+
+# Driver is installed by the GPU Operator (containerized), not on the host.
+# Same value for the bare-metal cluster (Operator-managed driver there too); host driver would be "/".
+nvidiaDriverRoot: /run/nvidia/driver
+
+resources:
+  gpus:
+    enabled: true
+  # Multi-Node NVLink only (GB200/GB300); also unsupported by Karpenter DRA
+  computeDomains:
+    enabled: false
+
+# DynamicMIG: the plugin carves MIG slices per ResourceClaim
+featureGates:
+  DynamicMIG: true
+
+kubeletPlugin:
+  # Only nodes explicitly migrated to DRA
+  nodeSelector:
+    nvidia.com/dra-kubelet-plugin: "true"
+    # pods selected by this label are restarted by the Operator on driver upgrades / MIG changes
+    nvidia.com/gpu.deploy.client: "true"
+  tolerations:
+    # GPU pools are tainted nvidia.com/gpu=true:NoSchedule
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    # Bare-metal stage 1: node 2 carries nvidia.com/dra=experimental:NoSchedule to keep prod workloads
+    - key: nvidia.com/dra
+      operator: Exists
+      effect: NoSchedule
