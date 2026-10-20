@@ -8,8 +8,8 @@ locals {
   name            = "mltest"
   cluster_version = "1.37"
   # self-hosted Ubuntu AMI publication — pin separately
-  ubuntu_eks_version = "1.36"
-  region             = "ap-southeast-1"
+  ubuntu_eks_version = "1.37"
+  region             = "ap-southeast-2"
 
   vpc_cidr = "10.0.0.0/16"
   azs      = slice(data.aws_availability_zones.available.names, 0, 3)
