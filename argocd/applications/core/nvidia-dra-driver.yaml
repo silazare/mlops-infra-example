@@ -35,10 +35,6 @@ spec:
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
-        # DeviceClass bridging the legacy nvidia.com/gpu extended resource onto DRA
-        - repoURL: https://github.com/silazare/mlops-infra-example
-          targetRevision: '{{ index .metadata.annotations "target_revision" }}'
-          path: argocd/manifests/nvidia-dra-driver
       destination:
         server: "{{ .server }}"
         namespace: dra-driver-nvidia-gpu
