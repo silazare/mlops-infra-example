@@ -1,0 +1,57 @@
+---
+# fill one H100 with 1g.10gb slices. 7 fit; the 8th replica must stay Pending with a scheduler event,
+# not fail in prepare. Scale down to 0 afterwards and confirm `nvidia-smi mig -lgi` on the node is empty
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-1g-10gb
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: mig
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "1g.10gb"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mig-fill
+  namespace: dra-test
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: mig-fill
+  template:
+    metadata:
+      labels:
+        app: mig-fill
+    spec:
+      nodeSelector:
+        nodegroup: ubuntu-gpu-mig
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: cuda
+          image: nvidia/cuda:12.8.0-base-ubuntu24.04
+          command: ["sh", "-c", "nvidia-smi -L; sleep infinity"]
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+            claims:
+              - name: mig
+      resourceClaims:
+        - name: mig
+          resourceClaimTemplateName: mig-1g-10gb

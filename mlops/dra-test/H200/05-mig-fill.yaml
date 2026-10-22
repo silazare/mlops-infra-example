@@ -1,0 +1,68 @@
+---
+# fill one H200 with 1g.18gb slices. 7 fit; the 8th replica must stay Pending with a scheduler event,
+# not fail in prepare. Scale down to 0 afterwards and confirm `nvidia-smi mig -lgi` on the node is empty.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-pair
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: small
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "1g.18gb"
+        - name: medium
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "2g.35gb"
+      constraints:
+        - requests: ["small", "medium"]
+          matchAttribute: gpu.nvidia.com/parentUUID
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mig-fill
+  namespace: dra-test
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: mig-fill
+  template:
+    metadata:
+      labels:
+        app: mig-fill
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: kw3-c205
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        - key: nvidia.com/dra
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: cuda
+          image: nvidia/cuda:12.8.0-base-ubuntu24.04
+          command: ["sh", "-c", "nvidia-smi -L; sleep infinity"]
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+            claims:
+              - name: mig
+      resourceClaims:
+        - name: mig
+          resourceClaimTemplateName: mig-1g-18gb

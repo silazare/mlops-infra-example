@@ -1,0 +1,52 @@
+---
+# prioritized list — prefer an A10G, fall back to a T4 (DRAPrioritizedList, stable since 1.36).
+# Expect: with a free A10G the pod takes it; with only T4 nodes it takes a T4 instead of staying Pending.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: gpu-prefer-a10g
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          firstAvailable:
+            - name: a10g
+              deviceClassName: gpu.nvidia.com
+              selectors:
+                - cel:
+                    expression: device.attributes["gpu.nvidia.com"].productName.lowerAscii().matches("^.*a10g.*$")
+            - name: any
+              deviceClassName: gpu.nvidia.com
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: first-available
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpu
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: gpu-prefer-a10g

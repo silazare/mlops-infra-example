@@ -1,0 +1,145 @@
+---
+# pick the card by attributes instead of node labels.
+# ubuntu-gpu pool mixes g4dn (Tesla T4, 15 GiB) and g5 (NVIDIA A10G, 22.5 GiB).
+# Expect: cel-t4 lands on a T4; cel-big lands on an A10G (Karpenter DRA provisions g5 if none exists);
+# cel-impossible stays Pending with a scheduler event — nothing has 100Gi here.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: gpu-t4
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].productName.lowerAscii().matches("^.*t4.*$")
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: gpu-over-20gi
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) > 0
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: gpu-over-100gi
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("100Gi")) > 0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cel-t4
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpu
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: gpu-t4
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cel-big
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; nvidia-smi --query-gpu=memory.total --format=csv; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpu
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: gpu-over-20gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cel-impossible
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpu
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: gpu-over-100gi

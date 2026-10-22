@@ -1,0 +1,58 @@
+---
+# two containers in one pod share one claim -> the same physical GPU.
+# Expect: `kubectl logs shared-claim -c a` and `-c b` print the same UUID. Impossible with the device plugin.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: single-gpu
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.nvidia.com
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: shared-claim
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: a
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpu
+    - name: b
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpu
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: single-gpu

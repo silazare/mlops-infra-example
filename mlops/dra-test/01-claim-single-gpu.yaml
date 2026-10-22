@@ -1,0 +1,46 @@
+---
+# One full GPU through an explicit ResourceClaimTemplate
+# Expect: Running on ubuntu-gpu; UUID from `nvidia-smi -L` equals the `uuid` attribute in the node's ResourceSlice.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: single-gpu
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.nvidia.com
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: claim-single
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpu
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: single-gpu

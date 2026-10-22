@@ -1,0 +1,75 @@
+---
+# two different slices carved from the SAME physical GPU in one claim (matchAttribute on parentUUID).
+# Expect: both containers Running, `nvidia-smi -L` in each shows a MIG device with the same parent GPU UUID;
+# on the node `nvidia-smi mig -lgi` shows one 1g and one 2g GI on the same GPU.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-pair
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: small
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "1g.18gb"
+        - name: medium
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "2g.35gb"
+      constraints:
+        - requests: ["small", "medium"]
+          matchAttribute: gpu.nvidia.com/parentUUID
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mig-pair
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw3-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: nvidia.com/dra
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: small
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+            request: small
+    - name: medium
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+            request: medium
+  resourceClaims:
+    - name: mig
+      resourceClaimTemplateName: mig-pair

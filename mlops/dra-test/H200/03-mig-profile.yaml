@@ -1,0 +1,101 @@
+---
+# specific MIG profile by attribute. H200 141GB profiles: 1g.18gb 1g.35gb 2g.35gb 3g.71gb 4g.71gb 7g.141gb
+# Check the list in the node's ResourceSlice
+# Expect: mig-profile Running on a 1g.18gb; mig-bogus stays Pending (no such profile anywhere).
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-1g-18gb
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: mig
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "1g.18gb"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-bogus
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: mig
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "9g.999gb"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mig-profile
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw3-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: nvidia.com/dra
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; nvidia-smi --query-gpu=memory.total --format=csv; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+  resourceClaims:
+    - name: mig
+      resourceClaimTemplateName: mig-1g-18gb
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mig-bogus
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw3-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: nvidia.com/dra
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+  resourceClaims:
+    - name: mig
+      resourceClaimTemplateName: mig-bogus

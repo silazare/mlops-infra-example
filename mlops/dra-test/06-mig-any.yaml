@@ -1,0 +1,47 @@
+---
+# any MIG slice, no selector. Dynamic MIG creates the partition on prepare.
+# Expect: Running; `nvidia-smi -L` inside shows a MIG device; on the node `nvidia-smi mig -lgi` lists one GI.
+# After `kubectl delete pod mig-any` the GI disappears
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-any
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: mig
+          exactly:
+            deviceClassName: mig.nvidia.com
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mig-any
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu-mig
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+  resourceClaims:
+    - name: mig
+      resourceClaimTemplateName: mig-any

@@ -1,0 +1,97 @@
+---
+# a specific MIG profile by attribute. H100 80GB profiles: 1g.10gb 1g.20gb 2g.20gb 3g.40gb 4g.40gb 7g.80gb
+# (H200: 1g.18gb 2g.35gb 3g.71gb 4g.71gb 7g.141gb). Check the list in the node's ResourceSlice first.
+# Expect: Running on a 1g.10gb; mig-bogus stays Pending (no such profile anywhere).
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-1g-10gb
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: mig
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "1g.10gb"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-bogus
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: mig
+          exactly:
+            deviceClassName: mig.nvidia.com
+            selectors:
+              - cel:
+                  expression: device.attributes["gpu.nvidia.com"].profile == "9g.999gb"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mig-profile
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu-mig
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; nvidia-smi --query-gpu=memory.total --format=csv; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+  resourceClaims:
+    - name: mig
+      resourceClaimTemplateName: mig-1g-10gb
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mig-bogus
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    nodegroup: ubuntu-gpu-mig
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.0-base-ubuntu24.04
+      command: ["sh", "-c", "nvidia-smi -L; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+  resourceClaims:
+    - name: mig
+      resourceClaimTemplateName: mig-bogus

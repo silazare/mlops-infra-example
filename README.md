@@ -12,6 +12,7 @@ Core layer (ArgoCD at `argocd/applications/core/`):
 - [x] Traefik ingress controller
 - [x] AWS Load Balancer Controller (Helm release; IAM stays in TF)
 - [x] NVIDIA GPU Operator
+- [x] NVIDIA DRA driver — Dynamic Resource Allocation
 - [x] Kube-prometheus-stack + Loki + Promtail for Monitoring
 - [x] Piraeus Operator for Linstor tests
 - [x] Istio for LLM inference smart routing
@@ -36,6 +37,7 @@ Flags are published as labels on the ArgoCD cluster Secret; each ApplicationSet 
 - [Deployment](#deployment)
 - [Delete infrastructure](#delete-infrastructure)
 - [Bank Vaults Operator](#bank-vaults-operator)
+- [GPU allocation: device plugin and DRA](#gpu-allocation-device-plugin-and-dra)
 - [JupyterLab example with GPU](#jupyterlab-example-with-gpu)
 - [Piraeus Operator tests for Linstor](#piraeus-operator-tests-for-linstor)
 - [JupyterHub deployment](#jupyterhub-deployment)
@@ -160,6 +162,24 @@ vault status
 
 export VAULT_TOKEN="xxxxx"
 vault kv get secret/openclaw/env
+```
+
+## GPU allocation: device plugin and DRA
+
+Two mechanisms, never both on one node:
+- `al2023-gpu` — NVIDIA device plugin, classic `resources.limits.nvidia.com/gpu`.
+- `ubuntu-gpu`, `ubuntu-gpu-mig` — DRA kubelet plugin ([nvidia-dra-driver](argocd/applications/core/nvidia-dra-driver.yaml)).
+  Legacy `nvidia.com/gpu: N` still works there through the chart's `gpu.nvidia.com` DeviceClass (`extendedResourceName`);
+  new workloads use `ResourceClaimTemplate`. `ubuntu-gpu-mig` (p5.4xlarge, H100) is for Dynamic MIG.
+
+Test manifests:
+-[DRA tests](mlops/dra-test/README.md)
+-[legacy gpu tests](mlops/gpu-test/)
+
+```shell
+kubectl get deviceclass
+kubectl get resourceslices -o custom-columns='NODE:.spec.nodeName,DEV:.spec.devices[*].name'
+kubectl get resourceclaims -A
 ```
 
 ## JupyterLab example with GPU

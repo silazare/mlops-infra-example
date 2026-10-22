@@ -19,10 +19,16 @@ data "cloudinit_config" "ubuntu_node" {
       apt-get update
       apt-get install -y linux-headers-virtual
 
+      # Keep in sync with the NodePool labels
+      NODE_LABELS=nodegroup=ubuntu
+
+      # karpenter.sh/unregistered is mandatory for amiFamily Custom: Karpenter syncs NodeClaim labels/taints
+      NODE_TAINTS=nodegroup=ubuntu:NoSchedule,karpenter.sh/unregistered:NoExecute
+
       /etc/eks/bootstrap.sh ${module.eks.cluster_name} \
         --b64-cluster-ca ${module.eks.cluster_certificate_authority_data} \
         --apiserver-endpoint ${module.eks.cluster_endpoint} \
-        --kubelet-extra-args "--node-labels=nodegroup=ubuntu --register-with-taints=nodegroup=ubuntu:NoSchedule"
+        --kubelet-extra-args "--node-labels=$NODE_LABELS --register-with-taints=$NODE_TAINTS"
     EOT
   }
 }
@@ -142,10 +148,20 @@ data "cloudinit_config" "ubuntu_gpu_node" {
       #!/bin/bash
       set -ex
 
+      # DRA node labels go through kubelet, not only the NodePool template
+      # Keep in sync with the NodePool labels
+      NODE_LABELS=nodegroup=ubuntu-gpu
+      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.device-plugin=false
+      NODE_LABELS=$NODE_LABELS,nvidia.com/dra-kubelet-plugin=true
+      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.client=true
+
+      # karpenter.sh/unregistered is mandatory for amiFamily Custom: Karpenter syncs NodeClaim labels/taints
+      NODE_TAINTS=nvidia.com/gpu=true:NoSchedule,karpenter.sh/unregistered:NoExecute
+
       /etc/eks/bootstrap.sh ${module.eks.cluster_name} \
         --b64-cluster-ca ${module.eks.cluster_certificate_authority_data} \
         --apiserver-endpoint ${module.eks.cluster_endpoint} \
-        --kubelet-extra-args "--node-labels=nodegroup=ubuntu-gpu --register-with-taints=nvidia.com/gpu=true:NoSchedule"
+        --kubelet-extra-args "--node-labels=$NODE_LABELS --register-with-taints=$NODE_TAINTS"
     EOT
   }
 }
@@ -215,8 +231,6 @@ spec:
         nvidia.com/dra-kubelet-plugin: "true"
         # Operator restarts pods selected by this label on driver upgrades / MIG changes
         nvidia.com/gpu.deploy.client: "true"
-        # Karpenter DRA (settings.awsFeatureGates.draNVIDIAGPU)
-        nvidia.com/gpu.present: "true"
     spec:
       taints:
       # Block non-GPU pods; only workloads with the matching toleration land here.
@@ -263,10 +277,19 @@ data "cloudinit_config" "ubuntu_gpu_mig_node" {
       #!/bin/bash
       set -ex
 
+      # DRA node labels go through kubelet, not only the NodePool template
+      # Keep in sync with the NodePool labels
+      NODE_LABELS=nodegroup=ubuntu-gpu-mig
+      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.device-plugin=false
+      NODE_LABELS=$NODE_LABELS,nvidia.com/dra-kubelet-plugin=true
+      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.client=true
+
+      NODE_TAINTS=nvidia.com/gpu=true:NoSchedule,karpenter.sh/unregistered:NoExecute
+
       /etc/eks/bootstrap.sh ${module.eks.cluster_name} \
         --b64-cluster-ca ${module.eks.cluster_certificate_authority_data} \
         --apiserver-endpoint ${module.eks.cluster_endpoint} \
-        --kubelet-extra-args "--node-labels=nodegroup=ubuntu-gpu-mig --register-with-taints=nvidia.com/gpu=true:NoSchedule"
+        --kubelet-extra-args "--node-labels=$NODE_LABELS --register-with-taints=$NODE_TAINTS"
     EOT
   }
 }
@@ -337,8 +360,6 @@ spec:
         nvidia.com/dra-kubelet-plugin: "true"
         # Operator restarts pods selected by this label on driver upgrades / MIG changes
         nvidia.com/gpu.deploy.client: "true"
-        # Karpenter DRA (settings.awsFeatureGates.draNVIDIAGPU)
-        nvidia.com/gpu.present: "true"
     spec:
       taints:
         - key: nvidia.com/gpu
@@ -384,10 +405,19 @@ data "cloudinit_config" "triton_gpu_node" {
       #!/bin/bash
       set -ex
 
+      # DRA node labels go through kubelet, not only the NodePool template
+      # Keep in sync with the NodePool labels
+      NODE_LABELS=nodegroup=triton-gpu
+      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.device-plugin=false
+      NODE_LABELS=$NODE_LABELS,nvidia.com/dra-kubelet-plugin=true
+      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.client=true
+
+      NODE_TAINTS=nvidia.com/gpu=true:NoSchedule,karpenter.sh/unregistered:NoExecute
+
       /etc/eks/bootstrap.sh ${module.eks.cluster_name} \
         --b64-cluster-ca ${module.eks.cluster_certificate_authority_data} \
         --apiserver-endpoint ${module.eks.cluster_endpoint} \
-        --kubelet-extra-args "--node-labels=nodegroup=triton-gpu --register-with-taints=nvidia.com/gpu=true:NoSchedule"
+        --kubelet-extra-args "--node-labels=$NODE_LABELS --register-with-taints=$NODE_TAINTS"
     EOT
   }
 }
@@ -453,6 +483,9 @@ spec:
     metadata:
       labels:
         nodegroup: triton-gpu
+        nvidia.com/gpu.deploy.device-plugin: "false"
+        nvidia.com/dra-kubelet-plugin: "true"
+        nvidia.com/gpu.deploy.client: "true"
     spec:
       taints:
         - key: nvidia.com/gpu
