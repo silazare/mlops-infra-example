@@ -35,7 +35,7 @@ spec:
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           ref: values
-        # dcgm-exporter custom metric ConfigMap (dcgm-metrics-custom)
+        # dcgm-exporter custom metric ConfigMap (dcgm-metrics-custom) + DRA resourceslices RBAC
         - repoURL: https://github.com/silazare/mlops-infra-example
           targetRevision: '{{ index .metadata.annotations "target_revision" }}'
           path: argocd/manifests/nvidia-gpu-operator

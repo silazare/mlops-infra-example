@@ -51,6 +51,14 @@ dcgmExporter:
   # Custom metrics set, ConfigMap from argocd/manifests/nvidia-gpu-operator/
   config:
     name: dcgm-metrics-custom
+  # DRA pod attribution: the exporter reads DRA allocations from kubelet PodResources
+  # and resolves device names via ResourceSlice, only with this flag.
+  # Device-plugin allocations keep working through the same API.
+  env:
+    - name: KUBERNETES_ENABLE_DRA
+      value: "true"
+  # Adds the pod_uid label
+  enablePodUID: true
   # Scrape via kube-prometheus-stack
   serviceMonitor:
     enabled: true

@@ -1,0 +1,57 @@
+---
+# Prioritized list (DRAPrioritizedList, beta/on in 1.35): the scheduler tries the subrequests in order and takes the
+# first one that fits. Here: prefer a 2g.35gb slice, fall back to 1g.18gb.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mig-2g-or-1g
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: mig
+          firstAvailable:
+            - name: bigger
+              deviceClassName: mig.nvidia.com
+              selectors:
+                - cel:
+                    expression: device.attributes["gpu.nvidia.com"].profile == "2g.35gb"
+            - name: smaller
+              deviceClassName: mig.nvidia.com
+              selectors:
+                - cel:
+                    expression: device.attributes["gpu.nvidia.com"].profile == "1g.18gb"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mig-first-available
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw20-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: nvidia.com/dra
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["sh", "-c", "nvidia-smi -L; nvidia-smi; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+  resourceClaims:
+    - name: mig
+      resourceClaimTemplateName: mig-2g-or-1g

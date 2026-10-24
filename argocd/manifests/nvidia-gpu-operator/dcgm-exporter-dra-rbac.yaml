@@ -1,0 +1,37 @@
+# dcgm-exporter (KUBERNETES_ENABLE_DRA) resolves DRA device names through a ResourceSlice informer.
+# GPU Operator 26.7.2 ships RBAC for pods only on the ClusterPolicy path (asset 0210_clusterrole.yaml:
+# "TODO: Add resourceSlices permissions when GPU Operator exposes DRA exporter support").
+# Upstream fixed it only for the GPUCluster path: NVIDIA/gpu-operator#2697, #2706 (main, 2026-07/08).
+# Drop this manifest once the ClusterPolicy path grants resourceslices itself.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gpu-operator-dcgm-exporter-read-resourceslices
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: nvidia-gpu-operator
+rules:
+  - apiGroups:
+      - resource.k8s.io
+    resources:
+      - resourceslices
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gpu-operator-dcgm-exporter-read-resourceslices
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: nvidia-gpu-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gpu-operator-dcgm-exporter-read-resourceslices
+subjects:
+  - kind: ServiceAccount
+    name: nvidia-dcgm-exporter
+    namespace: gpu-operator

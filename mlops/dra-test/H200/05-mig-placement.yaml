@@ -1,0 +1,134 @@
+---
+# Slice placement across the GPUs of one node is random: the DRA allocator is first-fit without scoring and the driver
+# publishes one ResourceSlice per physical GPU in arbitrary order
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: mig-trio
+  namespace: dra-test
+spec:
+  devices:
+    requests:
+      - name: a
+        exactly:
+          deviceClassName: mig.nvidia.com
+          selectors:
+            - cel:
+                expression: device.attributes["gpu.nvidia.com"].profile == "1g.18gb"
+      - name: b
+        exactly:
+          deviceClassName: mig.nvidia.com
+          selectors:
+            - cel:
+                expression: device.attributes["gpu.nvidia.com"].profile == "1g.18gb"
+      - name: c
+        exactly:
+          deviceClassName: mig.nvidia.com
+          selectors:
+            - cel:
+                expression: device.attributes["gpu.nvidia.com"].profile == "1g.18gb"
+    constraints:
+      - requests: ["a", "b", "c"]
+        matchAttribute: gpu.nvidia.com/parentUUID
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: place-a
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw20-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: nvidia.com/dra
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["sh", "-c", "nvidia-smi -L; nvidia-smi; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+            request: a
+  resourceClaims:
+    - name: mig
+      resourceClaimName: mig-trio
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: place-b
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw20-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: nvidia.com/dra
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["sh", "-c", "nvidia-smi -L; nvidia-smi; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+            request: b
+  resourceClaims:
+    - name: mig
+      resourceClaimName: mig-trio
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: place-c
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw20-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: nvidia.com/dra
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["sh", "-c", "nvidia-smi -L; nvidia-smi; sleep 3600"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: mig
+            request: c
+  resourceClaims:
+    - name: mig
+      resourceClaimName: mig-trio
