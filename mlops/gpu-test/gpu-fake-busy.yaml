@@ -44,7 +44,7 @@ metadata:
 spec:
   restartPolicy: Never
   nodeSelector:
-    nodegroup: al2023-gpu
+    nodegroup: ubuntu-gpu
   tolerations:
     - key: nvidia.com/gpu
       operator: Equal

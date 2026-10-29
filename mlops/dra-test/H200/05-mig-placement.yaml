@@ -44,9 +44,6 @@ spec:
     - key: nvidia.com/gpu
       operator: Exists
       effect: NoSchedule
-    - key: nvidia.com/dra
-      operator: Exists
-      effect: NoSchedule
   containers:
     - name: cuda
       image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
@@ -78,9 +75,6 @@ spec:
     - key: nvidia.com/gpu
       operator: Exists
       effect: NoSchedule
-    - key: nvidia.com/dra
-      operator: Exists
-      effect: NoSchedule
   containers:
     - name: cuda
       image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
@@ -110,9 +104,6 @@ spec:
     kubernetes.io/hostname: kw20-c205
   tolerations:
     - key: nvidia.com/gpu
-      operator: Exists
-      effect: NoSchedule
-    - key: nvidia.com/dra
       operator: Exists
       effect: NoSchedule
   containers:

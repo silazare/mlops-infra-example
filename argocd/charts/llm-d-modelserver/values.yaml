@@ -26,8 +26,9 @@ resources:
   limits:
     memory: 16Gi
 
+# al2023-gpu (host driver) is disabled
 nodeSelector:
-  nodegroup: al2023-gpu
+  nodegroup: ubuntu-gpu
 tolerations:
   - key: nvidia.com/gpu
     operator: Exists

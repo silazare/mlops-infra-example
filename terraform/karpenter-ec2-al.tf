@@ -93,7 +93,12 @@ EOF
   ]
 }
 
-// GPU EC2NodeClass and NodePool — GPU workloads
+// GPU EC2NodeClass and NodePool — disabled.
+// The AL2023 NVIDIA AMI ships the driver on the host (root "/"), while the DRA kubelet plugin is deployed
+// as one release with nvidiaDriverRoot=/run/nvidia/driver (Operator-managed driver). Mixing both needs a
+// second DRA release and a way to skip its cluster-scoped DeviceClasses; until then every GPU pool is
+// Ubuntu + Operator driver.
+/*
 resource "kubectl_manifest" "karpenter_ec2nodeclass_al2023_gpu" {
   yaml_body = <<EOF
 apiVersion: karpenter.k8s.aws/v1
@@ -187,3 +192,4 @@ EOF
     kubectl_manifest.karpenter_ec2nodeclass_al2023_gpu
   ]
 }
+*/

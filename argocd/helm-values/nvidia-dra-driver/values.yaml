@@ -17,17 +17,11 @@ featureGates:
   DynamicMIG: true
 
 kubeletPlugin:
-  # Only nodes explicitly migrated to DRA
+  # Must match NODE_LABEL_FOR_GPU_POD_EVICTION in the GPU Operator values on a driver upgrade
   nodeSelector:
-    nvidia.com/dra-kubelet-plugin: "true"
-    # pods selected by this label are restarted by the Operator on driver upgrades / MIG changes
-    nvidia.com/gpu.deploy.client: "true"
+    nvidia.com/gpu.present: "true"
   tolerations:
     # GPU pools are tainted nvidia.com/gpu=true:NoSchedule
     - key: nvidia.com/gpu
-      operator: Exists
-      effect: NoSchedule
-    # Bare-metal stage 1: node 2 carries nvidia.com/dra=experimental:NoSchedule to keep prod workloads
-    - key: nvidia.com/dra
       operator: Exists
       effect: NoSchedule

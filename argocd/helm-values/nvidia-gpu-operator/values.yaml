@@ -9,13 +9,24 @@ driver:
   image: driver
   # Compiles driver on the node from kernel-devel
   usePrecompiled: false
+  upgradePolicy:
+    # options for waiting on pod completions before deleting GPU pods on a node the upgrade
+    waitForCompletion:
+      timeoutSeconds: 14400 # 4 hours
+      podSelector: "nvidia.com/upgrade-wait=true"
+    # options for gpu pod deletion
+    gpuPodDeletion:
+      # delete GPU pods without an owner, otherwise upgrade may stuck
+      force: true
+      # GPU pods mount emptyDir (dshm), without this the upgrade controller refuses to delete them
+      deleteEmptyDir: true
   manager:
     env:
-      # DRA: the driver-manager evicts pods carrying this node label before a driver upgrade,
-      # otherwise the standalone DRA kubelet plugin pins the old driver and the upgrade hangs.
-      # Must match the DRA chart's kubeletPlugin.nodeSelector
+      # For DRA: before a driver upgrade the driver-manager flips this node label, so any DaemonSet whose
+      # nodeSelector uses it (the standalone DRA kubelet plugin) gets evicted and releases the kernel module
+      # The DRA chart's kubeletPlugin.nodeSelector must use the same label, otherwise the upgrade stuck
       - name: NODE_LABEL_FOR_GPU_POD_EVICTION
-        value: nvidia.com/dra-kubelet-plugin
+        value: nvidia.com/gpu.present
 
 # Patches containerd config and installs nvidia-container-runtime on the node.
 # Set to false if the AMI already has the toolkit
@@ -29,10 +40,12 @@ daemonsets:
     - key: nvidia.com/gpu
       operator: Exists
       effect: NoSchedule
-    # DRA isolation taint on the DRA node (nvidia.com/dra=experimental:NoSchedule)
-    - key: nvidia.com/dra
-      operator: Exists
-      effect: NoSchedule
+
+# Exposes nvidia.com/gpu as a schedulable resource
+# Device plugin is replaced by the DRA kubelet plugin (nvidia-dra-driver) on every GPU node
+# nvidia.com/gpu requests are served by the DRA bridge
+devicePlugin:
+  enabled: false
 
 # GPU partitioning
 mig:
@@ -52,7 +65,6 @@ dcgmExporter:
   config:
     name: dcgm-metrics-custom
   # DRA pod attribution: the exporter reads DRA allocations from kubelet PodResources
-  # and resolves device names via ResourceSlice, only with this flag.
   # Device-plugin allocations keep working through the same API.
   env:
     - name: KUBERNETES_ENABLE_DRA
@@ -87,9 +99,6 @@ node-feature-discovery:
         value: ""
         effect: NoSchedule
       - key: nvidia.com/gpu
-        operator: Exists
-        effect: NoSchedule
-      - key: nvidia.com/dra
         operator: Exists
         effect: NoSchedule
 

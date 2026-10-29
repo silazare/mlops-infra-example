@@ -36,9 +36,6 @@ spec:
     - key: nvidia.com/gpu
       operator: Exists
       effect: NoSchedule
-    - key: nvidia.com/dra
-      operator: Exists
-      effect: NoSchedule
   containers:
     - name: cuda
       image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime

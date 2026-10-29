@@ -148,12 +148,7 @@ data "cloudinit_config" "ubuntu_gpu_node" {
       #!/bin/bash
       set -ex
 
-      # DRA node labels go through kubelet, not only the NodePool template
-      # Keep in sync with the NodePool labels
       NODE_LABELS=nodegroup=ubuntu-gpu
-      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.device-plugin=false
-      NODE_LABELS=$NODE_LABELS,nvidia.com/dra-kubelet-plugin=true
-      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.client=true
 
       # karpenter.sh/unregistered is mandatory for amiFamily Custom: Karpenter syncs NodeClaim labels/taints
       NODE_TAINTS=nvidia.com/gpu=true:NoSchedule,karpenter.sh/unregistered:NoExecute
@@ -226,11 +221,6 @@ spec:
     metadata:
       labels:
         nodegroup: ubuntu-gpu
-        # DRA pool: GPU Operator removes the device plugin from these nodes,
-        nvidia.com/gpu.deploy.device-plugin: "false"
-        nvidia.com/dra-kubelet-plugin: "true"
-        # Operator restarts pods selected by this label on driver upgrades / MIG changes
-        nvidia.com/gpu.deploy.client: "true"
     spec:
       taints:
       # Block non-GPU pods; only workloads with the matching toleration land here.
@@ -277,12 +267,7 @@ data "cloudinit_config" "ubuntu_gpu_mig_node" {
       #!/bin/bash
       set -ex
 
-      # DRA node labels go through kubelet, not only the NodePool template
-      # Keep in sync with the NodePool labels
       NODE_LABELS=nodegroup=ubuntu-gpu-mig
-      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.device-plugin=false
-      NODE_LABELS=$NODE_LABELS,nvidia.com/dra-kubelet-plugin=true
-      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.client=true
 
       NODE_TAINTS=nvidia.com/gpu=true:NoSchedule,karpenter.sh/unregistered:NoExecute
 
@@ -355,11 +340,6 @@ spec:
     metadata:
       labels:
         nodegroup: ubuntu-gpu-mig
-        # DRA switches
-        nvidia.com/gpu.deploy.device-plugin: "false"
-        nvidia.com/dra-kubelet-plugin: "true"
-        # Operator restarts pods selected by this label on driver upgrades / MIG changes
-        nvidia.com/gpu.deploy.client: "true"
     spec:
       taints:
         - key: nvidia.com/gpu
@@ -405,12 +385,7 @@ data "cloudinit_config" "triton_gpu_node" {
       #!/bin/bash
       set -ex
 
-      # DRA node labels go through kubelet, not only the NodePool template
-      # Keep in sync with the NodePool labels
       NODE_LABELS=nodegroup=triton-gpu
-      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.device-plugin=false
-      NODE_LABELS=$NODE_LABELS,nvidia.com/dra-kubelet-plugin=true
-      NODE_LABELS=$NODE_LABELS,nvidia.com/gpu.deploy.client=true
 
       NODE_TAINTS=nvidia.com/gpu=true:NoSchedule,karpenter.sh/unregistered:NoExecute
 
@@ -483,9 +458,6 @@ spec:
     metadata:
       labels:
         nodegroup: triton-gpu
-        nvidia.com/gpu.deploy.device-plugin: "false"
-        nvidia.com/dra-kubelet-plugin: "true"
-        nvidia.com/gpu.deploy.client: "true"
     spec:
       taints:
         - key: nvidia.com/gpu
