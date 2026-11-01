@@ -1,0 +1,206 @@
+# Real DDP training on 2 GPUs inside ONE NVLink island (claim with matchAttribute numaNode).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: topo-ddp-island
+  namespace: dra-test
+data:
+  probe.sh: |
+    #!/bin/sh
+    echo "== pod ${POD_NAME:-?} on ${NODE_NAME:-?}"
+    nvidia-smi --query-gpu=index,uuid,pci.bus_id --format=csv,noheader | while IFS=, read i u b; do
+      bdf=$(echo "$b" | tr -d ' ' | sed 's/^0000//' | tr 'A-Z' 'a-z')
+      echo "GPU$i $(echo $u | tr -d ' ') $bdf numa=$(cat /sys/bus/pci/devices/$bdf/numa_node 2>/dev/null || echo '?')"
+    done
+    echo "== nvidia-smi topo -m (SYS between any pair = pod straddles two islands)"
+    nvidia-smi topo -m
+  ddp_bench.py: |
+    # torchrun DDP benchmark derived from mlops/gpu-test/gpu-real-busy.yaml: allreduce bus bandwidth, then a DDP
+    # training loop with ~1 GiB of gradients per step, so step time is dominated by the NVLink-vs-UPI question.
+    import os
+    import subprocess
+    import time
+
+    import torch
+    import torch.distributed as dist
+    import torch.nn as nn
+
+
+    def gpu_info(index):
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=uuid,pci.bus_id", "-i", str(index), "--format=csv,noheader"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        uuid, bus = [s.strip() for s in out.split(",")]
+        bdf = bus[4:].lower()
+        try:
+            numa = open(f"/sys/bus/pci/devices/{bdf}/numa_node").read().strip()
+        except OSError:
+            numa = "?"
+        return uuid, bdf, numa
+
+
+    def main():
+        dist.init_process_group("nccl")
+        rank, world = dist.get_rank(), dist.get_world_size()
+        local = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local)
+        dev = torch.device("cuda", local)
+        uuid, bdf, numa = gpu_info(local)
+        print(f"[rank {rank}] {uuid} {bdf} numa={numa}", flush=True)
+        dist.barrier()
+
+        # 1. allreduce bus bandwidth, 256 MiB fp32 (nccl-tests busbw formula)
+        n = 64 * 1024 * 1024
+        x = torch.ones(n, device=dev)
+        for _ in range(10):
+            dist.all_reduce(x)
+        torch.cuda.synchronize()
+        dist.barrier()
+        iters = 50
+        t0 = time.time()
+        for _ in range(iters):
+            dist.all_reduce(x)
+        torch.cuda.synchronize()
+        dt = (time.time() - t0) / iters
+        size = n * 4
+        if rank == 0:
+            print(
+                f"allreduce 256MiB x{world}: {dt * 1e3:.2f} ms/iter "
+                f"algbw={size / dt / 1e9:.1f} GB/s busbw={2 * (world - 1) / world * size / dt / 1e9:.1f} GB/s",
+                flush=True,
+            )
+
+        # 2. DDP training: LAYERS x Linear(HIDDEN, HIDDEN), default 4 x 8192^2 = 268M params = 1 GiB fp32 grads/step
+        hidden = int(os.environ.get("HIDDEN", "8192"))
+        layers = int(os.environ.get("LAYERS", "4"))
+        batch = int(os.environ.get("BATCH", "64"))
+        steps = int(os.environ.get("STEPS", "100"))
+        mods = []
+        for _ in range(layers):
+            mods += [nn.Linear(hidden, hidden), nn.GELU()]
+        model = nn.Sequential(*mods).to(dev)
+        params = sum(p.numel() for p in model.parameters())
+        ddp = nn.parallel.DistributedDataParallel(model, device_ids=[local])
+        opt = torch.optim.SGD(ddp.parameters(), lr=1e-4)
+        data = torch.randn(batch, hidden, device=dev)
+        target = torch.randn(batch, hidden, device=dev)
+        loss_fn = nn.MSELoss()
+
+        def step():
+            loss = loss_fn(ddp(data), target)
+            loss.backward()
+            opt.step()
+            opt.zero_grad(set_to_none=True)
+            return loss
+
+        for _ in range(5):
+            step()
+        torch.cuda.synchronize()
+        dist.barrier()
+        t0 = time.time()
+        last = t0
+        for s in range(1, steps + 1):
+            loss = step()
+            if rank == 0 and s % 20 == 0:
+                torch.cuda.synchronize()
+                now = time.time()
+                print(
+                    f"step {s}/{steps} {(now - last) / 20 * 1e3:.1f} ms/step loss={loss.item():.4f} "
+                    f"grad_sync={params * 4 / 2**30:.2f} GiB/step",
+                    flush=True,
+                )
+                last = now
+        torch.cuda.synchronize()
+        dist.barrier()
+        if rank == 0:
+            total = time.time() - t0
+            print(
+                f"DONE params={params / 1e6:.0f}M world={world} steps={steps} "
+                f"avg {total / steps * 1e3:.1f} ms/step samples/s={batch * world * steps / total:.0f}",
+                flush=True,
+            )
+        hold = int(os.environ.get("HOLD", "0"))
+        if hold:
+            time.sleep(hold)
+        dist.destroy_process_group()
+
+
+    main()
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: ddp-island
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpus
+          exactly:
+            deviceClassName: gpu.nvidia.com
+            count: 2
+      constraints:
+        - requests: ["gpus"]
+          matchAttribute: resource.kubernetes.io/numaNode
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ddp-island
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw20-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: train
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["sh", "-c", "sh /app/probe.sh; torchrun --standalone --nproc_per_node=gpu /app/ddp_bench.py"]
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_DEBUG_SUBSYS
+          value: INIT,GRAPH
+        - name: STEPS
+          value: "100"
+        - name: HOLD                      # seconds to keep the pod alive after DONE (0 = exit)
+          value: "600"
+      volumeMounts:
+        - name: app
+          mountPath: /app
+        - name: shm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          cpu: "8"
+          memory: 32Gi
+        limits:
+          cpu: "8"
+          memory: 32Gi
+        claims:
+          - name: gpus
+  resourceClaims:
+    - name: gpus
+      resourceClaimTemplateName: ddp-island
+  volumes:
+    - name: app
+      configMap:
+        name: topo-ddp-island
+    - name: shm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 8Gi

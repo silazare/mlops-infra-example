@@ -1,0 +1,144 @@
+# Pin a claim to a specific island with a CEL selector on the standard attributes.
+# pin-numa0: 2 GPUs with numaNode == 0 (GPU0-3).  pin-pcie1: 2 GPUs with pcieRoot == pci0000:c8 (GPU4-7).
+# Expect: probe shows numa=0 only / numa=1 only; both pods run concurrently.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: topo-pin-island
+  namespace: dra-test
+data:
+  probe.sh: |
+    #!/bin/sh
+    echo "== pod ${POD_NAME:-?} on ${NODE_NAME:-?}"
+    nvidia-smi --query-gpu=index,uuid,pci.bus_id --format=csv,noheader | while IFS=, read i u b; do
+      bdf=$(echo "$b" | tr -d ' ' | sed 's/^0000//' | tr 'A-Z' 'a-z')
+      echo "GPU$i $(echo $u | tr -d ' ') $bdf numa=$(cat /sys/bus/pci/devices/$bdf/numa_node 2>/dev/null || echo '?')"
+    done
+    echo "== nvidia-smi topo -m (SYS between any pair = pod straddles two islands)"
+    nvidia-smi topo -m
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: pin-numa0
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpus
+          exactly:
+            deviceClassName: gpu.nvidia.com
+            count: 2
+            selectors:
+              - cel:
+                  expression: device.attributes["resource.kubernetes.io"].numaNode == 0
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: pin-pcie1
+  namespace: dra-test
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpus
+          exactly:
+            deviceClassName: gpu.nvidia.com
+            count: 2
+            selectors:
+              - cel:
+                  expression: device.attributes["resource.kubernetes.io"].pcieRoot == "pci0000:c8"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pin-numa0
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw20-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["sh", "-c", "sh /app/probe.sh; sleep 3600"]
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+      volumeMounts:
+        - name: app
+          mountPath: /app
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpus
+  resourceClaims:
+    - name: gpus
+      resourceClaimTemplateName: pin-numa0
+  volumes:
+    - name: app
+      configMap:
+        name: topo-pin-island
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pin-pcie1
+  namespace: dra-test
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: kw20-c205
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: cuda
+      image: registry-k8s.pyn.ru/k8s/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+      command: ["sh", "-c", "sh /app/probe.sh; sleep 3600"]
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+      volumeMounts:
+        - name: app
+          mountPath: /app
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+        claims:
+          - name: gpus
+  resourceClaims:
+    - name: gpus
+      resourceClaimTemplateName: pin-pcie1
+  volumes:
+    - name: app
+      configMap:
+        name: topo-pin-island

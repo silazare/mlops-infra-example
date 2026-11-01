@@ -3,3 +3,15 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: dra-test
+---
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-all
+  namespace: dra-test
+spec:
+  order: 100
+  selector: all()
+  types: [Ingress, Egress]
+  ingress: [{action: Allow}]
+  egress:  [{action: Allow}]
