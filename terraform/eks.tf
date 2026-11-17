@@ -33,6 +33,12 @@ module "eks" {
             }
           ]
         }
+        # VolumeSnapshot CRDs are not installed, the sidecar only floods logs with watch errors
+        sidecars = {
+          snapshotter = {
+            forceEnable = false
+          }
+        }
       })
     }
     coredns = {
